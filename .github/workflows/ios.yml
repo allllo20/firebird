@@ -27,28 +27,40 @@ jobs:
           dir: '${{ github.workspace }}/qt'
           modules: ""
 
-      - name: Build Firebird for iOS (qmake)
+      - name: Build Firebird for iOS (unsigned)
         env:
           QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
         run: |
           set -euxo pipefail
 
+          # Determine qmake path
           if [ -z "${QMAKE:-}" ]; then
             QMAKE="$QT_ROOT_DIR/bin/qmake"
           fi
 
-          echo "Using qmake at: $QMAKE"
-
           mkdir -p build-ios
           cd build-ios
 
+          # Generate Xcode project
           "$QMAKE" ../firebird.pro \
             -spec macx-ios-clang \
             CONFIG+=release \
             CONFIG+=iphoneos \
             CONFIG+=device
 
-          make -j"$(sysctl -n hw.logicalcpu)"
+          # Build using xcodebuild (unsigned)
+          xcodebuild \
+            -project firebird-emu.xcodeproj \
+            -scheme firebird-emu \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            -derivedDataPath derived \
+            build
+
 
       - name: Package unsigned IPA
         run: |

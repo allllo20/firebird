@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       ############################################################
-      # 1) Install Qt Desktop (Qt6 is monolithic)
+      # Install Qt Desktop (Qt6 monolithic)
       ############################################################
       - name: Install Qt Desktop
         uses: jurplel/install-qt-action@v3
@@ -28,7 +28,7 @@ jobs:
           modules: ""
 
       ############################################################
-      # 2) Install Qt for iOS (also monolithic in Qt6)
+      # Install Qt for iOS (Qt6 monolithic)
       ############################################################
       - name: Install Qt for iOS
         uses: jurplel/install-qt-action@v3
@@ -38,22 +38,20 @@ jobs:
           target: ios
           modules: ""
 
-      ############################################################
-      # 3) Install Tools
-      ############################################################
-      - name: Install CMake & Ninja
+      - name: Install build tools
         run: |
           brew install cmake ninja
 
       ############################################################
-      # 4) Configure CMake → Xcode project
+      # Configure CMake → Xcode project
+      # Firebird CMakeLists.txt is inside ./firebird/
       ############################################################
       - name: Configure CMake for iOS
         run: |
           mkdir build-ios
           cd build-ios
 
-          cmake .. \
+          cmake ../firebird \
             -G Xcode \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphoneos \
@@ -63,7 +61,7 @@ jobs:
             -DQT_HOST_PATH="$Qt6_DIR"
 
       ############################################################
-      # 5) Build App (unsigned)
+      # Build Firebird (unsigned)
       ############################################################
       - name: Build Firebird iOS app
         run: |
@@ -75,7 +73,7 @@ jobs:
             -derivedDataPath derived
 
       ############################################################
-      # 6) Package IPA
+      # Package unsigned IPA
       ############################################################
       - name: Create unsigned IPA
         run: |
@@ -85,7 +83,7 @@ jobs:
           zip -r Firebird-unsigned.ipa Payload
 
       ############################################################
-      # 7) Upload
+      # Upload artifact
       ############################################################
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4

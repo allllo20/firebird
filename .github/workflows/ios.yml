@@ -12,32 +12,27 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout
+      - name: Checkout repository WITH submodules
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Qt for iOS
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.6.3'       # gleiche Version wie in deinem Log
+          version: '6.6.3'
           host: 'mac'
           target: 'ios'
           arch: 'ios'
           dir: '${{ github.workspace }}/qt'
-          # keine archives/modules angeben -> vermeidet die XML-Fehler
-
-      - name: Show Qt root
-        run: |
-          echo "QT_ROOT_DIR=$QT_ROOT_DIR"
-          ls -R "$QT_ROOT_DIR"
+          modules: ""
 
       - name: Build Firebird for iOS (qmake)
         env:
-          # Qt setzt QT_ROOT_DIR automatisch; wir nutzen es direkt
           QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
         run: |
           set -euxo pipefail
 
-          # Fallback, falls $QMAKE aus dem env oben nicht gesetzt wurde
           if [ -z "${QMAKE:-}" ]; then
             QMAKE="$QT_ROOT_DIR/bin/qmake"
           fi
@@ -47,14 +42,12 @@ jobs:
           mkdir -p build-ios
           cd build-ios
 
-          # qmake für iOS; kein JIT/Translation-Sonderfall
           "$QMAKE" ../firebird.pro \
             -spec macx-ios-clang \
             CONFIG+=release \
             CONFIG+=iphoneos \
             CONFIG+=device
 
-          # qmake erzeugt ein Wrapper-Makefile, das intern xcodebuild aufruft
           make -j"$(sysctl -n hw.logicalcpu)"
 
       - name: Package unsigned IPA
@@ -62,28 +55,21 @@ jobs:
           set -euxo pipefail
           cd build-ios
 
-          # irgendein erzeugtes .app finden (Name kann sich ändern)
-          APP_BUNDLE="$(find . -maxdepth 5 -name '*.app' | head -n 1 || true)"
+          APP_BUNDLE="$(find . -maxdepth 6 -name '*.app' | head -n 1 || true)"
           if [ -z "$APP_BUNDLE" ]; then
-            echo "Kein .app-Bundle gefunden"
-            find . -maxdepth 6 -type d | sed 's/^/DIR: /'
+            echo "No .app found!"
             exit 1
           fi
-
-          echo "Gefundenes App-Bundle: $APP_BUNDLE"
 
           rm -rf Payload
           mkdir Payload
           cp -R "$APP_BUNDLE" Payload/
 
-          # .ipa ist im Kern nur ein ZIP mit einem Payload-Verzeichnis
-          /usr/bin/zip -r firebird-ios-unsigned.ipa Payload
-
-          ls -lh firebird-ios-unsigned.ipa
+          zip -r firebird-ios-unsigned.ipa Payload
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firebird-ios-unsigned-ipa
+          name: firebird-ios-unsigned
           path: build-ios/firebird-ios-unsigned.ipa
           if-no-files-found: error

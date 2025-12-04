@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       ############################################################
-      # 1) Install Qt Desktop (Host Tools) - NO MODULES for Qt6
+      # 1) Install Qt Desktop (Qt6 is monolithic)
       ############################################################
       - name: Install Qt Desktop
         uses: jurplel/install-qt-action@v3
@@ -25,28 +25,28 @@ jobs:
           version: ${{ env.QT_VERSION }}
           host: mac
           target: desktop
-          modules: ""    # Important: Qt6 desktop is monolithic
+          modules: ""
 
       ############################################################
-      # 2) Install Qt for iOS - modules are valid here
+      # 2) Install Qt for iOS (also monolithic in Qt6)
       ############################################################
-      - name: Install Qt iOS
+      - name: Install Qt for iOS
         uses: jurplel/install-qt-action@v3
         with:
           version: ${{ env.QT_VERSION }}
           host: mac
           target: ios
-          modules: "qtbase qtdeclarative qtmultimedia qtshadertools"
+          modules: ""
 
       ############################################################
-      # 3) Install build tools
+      # 3) Install Tools
       ############################################################
       - name: Install CMake & Ninja
         run: |
           brew install cmake ninja
 
       ############################################################
-      # 4) Configure CMake → Xcode project for iOS
+      # 4) Configure CMake → Xcode project
       ############################################################
       - name: Configure CMake for iOS
         run: |
@@ -63,7 +63,7 @@ jobs:
             -DQT_HOST_PATH="$Qt6_DIR"
 
       ############################################################
-      # 5) Build via Xcode (unsigned)
+      # 5) Build App (unsigned)
       ############################################################
       - name: Build Firebird iOS app
         run: |
@@ -75,7 +75,7 @@ jobs:
             -derivedDataPath derived
 
       ############################################################
-      # 6) Package unsigned IPA
+      # 6) Package IPA
       ############################################################
       - name: Create unsigned IPA
         run: |
@@ -85,7 +85,7 @@ jobs:
           zip -r Firebird-unsigned.ipa Payload
 
       ############################################################
-      # 7) Upload artifact
+      # 7) Upload
       ############################################################
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4

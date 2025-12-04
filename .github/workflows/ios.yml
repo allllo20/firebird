@@ -6,43 +6,62 @@ on:
   workflow_dispatch:
 
 jobs:
-  ios-build:
+  build-ios:
     runs-on: macos-latest
 
     env:
       QT_VERSION: 6.6.3
-      APP_NAME: Firebird
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Qt
+      ############################################################
+      # Install Qt 6 Desktop (REQUIRED for host tools)
+      ############################################################
+      - name: Install Qt Desktop (host tools)
         uses: jurplel/install-qt-action@v3
         with:
           version: ${{ env.QT_VERSION }}
-          modules: "qtbase qtdeclarative qtmultimedia qtquickcontrols2"
-          target: ios
+          host: mac
+          target: desktop
+          modules: "qtbase qtdeclarative qtmultimedia qtshadertools"
 
-      - name: Setup CMake + Ninja
+      ############################################################
+      # Install Qt 6 for iOS (the actual iOS frameworks)
+      ############################################################
+      - name: Install Qt for iOS
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: ios
+          modules: "qtbase qtdeclarative qtmultimedia qtshadertools"
+
+      - name: Install build tools
         run: |
           brew install cmake ninja
 
-      - name: Configure (CMake → Xcode project)
+      ############################################################
+      # Configure CMake → Generate Xcode project for iOS
+      ############################################################
+      - name: Configure CMake for iOS
         run: |
           mkdir build-ios
           cd build-ios
           cmake .. \
             -G Xcode \
             -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
             -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
             -DCMAKE_BUILD_TYPE=Release \
-            -DQT_HOST_PATH=$Qt6_DIR/.. \
-            -DQT_QMAKE_EXECUTABLE=$Qt6_DIR/bin/qmake \
-            -DCMAKE_PREFIX_PATH=$Qt6_DIR
+            -DCMAKE_PREFIX_PATH="$Qt6_DIR;$Qt6_IOS_DIR" \
+            -DQT_HOST_PATH="$Qt6_DIR"
 
-      - name: Build Xcode Target
+      ############################################################
+      # Build via Xcode (no signing)
+      ############################################################
+      - name: Build Firebird iOS App
         run: |
           cd build-ios
           xcodebuild \
@@ -51,14 +70,20 @@ jobs:
             -sdk iphoneos \
             -derivedDataPath derived
 
-      - name: Prepare IPA (Unsigned)
+      ############################################################
+      # Package into unsigned IPA
+      ############################################################
+      - name: Create unsigned IPA
         run: |
           cd build-ios/derived/Build/Products/Release-iphoneos
           mkdir Payload
           cp -R Firebird.app Payload/
           zip -r Firebird-unsigned.ipa Payload
 
-      - name: Upload IPA
+      ############################################################
+      # Upload artifact
+      ############################################################
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: firebird-ios-unsigned

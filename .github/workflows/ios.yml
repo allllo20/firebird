@@ -1,34 +1,65 @@
-name: Build iOS (Unsigned)
+name: Firebird iOS Build (Unsigned)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  build-ios:
+  ios-build:
     runs-on: macos-latest
+
+    env:
+      QT_VERSION: 6.6.3
+      APP_NAME: Firebird
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
         with:
-          channel: stable
+          version: ${{ env.QT_VERSION }}
+          modules: "qtbase qtdeclarative qtmultimedia qtquickcontrols2"
+          target: ios
 
-      - name: Flutter packages
-        run: flutter pub get
+      - name: Setup CMake + Ninja
+        run: |
+          brew install cmake ninja
 
-      # Falls Firebird eigene Build-Skripte hat, hier ergänzen
-      # - run: ./scripts/...
+      - name: Configure (CMake → Xcode project)
+        run: |
+          mkdir build-ios
+          cd build-ios
+          cmake .. \
+            -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_HOST_PATH=$Qt6_DIR/.. \
+            -DQT_QMAKE_EXECUTABLE=$Qt6_DIR/bin/qmake \
+            -DCMAKE_PREFIX_PATH=$Qt6_DIR
 
-      - name: Build iOS IPA (Unsigned)
-        run: flutter build ipa --no-codesign
+      - name: Build Xcode Target
+        run: |
+          cd build-ios
+          xcodebuild \
+            -scheme Firebird \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath derived
 
-      - name: Upload unsigned IPA
+      - name: Prepare IPA (Unsigned)
+        run: |
+          cd build-ios/derived/Build/Products/Release-iphoneos
+          mkdir Payload
+          cp -R Firebird.app Payload/
+          zip -r Firebird-unsigned.ipa Payload
+
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ipa-unsigned
-          path: build/ios/ipa/*.ipa
+          name: firebird-ios-unsigned
+          path: build-ios/derived/Build/Products/Release-iphoneos/Firebird-unsigned.ipa

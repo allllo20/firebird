@@ -1,92 +1,89 @@
-name: Firebird iOS Build (Unsigned)
+name: Build iOS IPA
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+  push:
+    branches:
+      - master
+      - main
 
 jobs:
   build-ios:
-    runs-on: macos-latest
-
-    env:
-      QT_VERSION: 6.6.3
+    runs-on: macos-14
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      ############################################################
-      # Install Qt Desktop (Qt6 monolithic)
-      ############################################################
-      - name: Install Qt Desktop
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: mac
-          target: desktop
-          modules: ""
-
-      ############################################################
-      # Install Qt for iOS (Qt6 monolithic)
-      ############################################################
       - name: Install Qt for iOS
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
-          version: ${{ env.QT_VERSION }}
-          host: mac
-          target: ios
-          modules: ""
+          version: '6.6.3'       # gleiche Version wie in deinem Log
+          host: 'mac'
+          target: 'ios'
+          arch: 'ios'
+          dir: '${{ github.workspace }}/qt'
+          # keine archives/modules angeben -> vermeidet die XML-Fehler
 
-      - name: Install build tools
+      - name: Show Qt root
         run: |
-          brew install cmake ninja
+          echo "QT_ROOT_DIR=$QT_ROOT_DIR"
+          ls -R "$QT_ROOT_DIR"
 
-      ############################################################
-      # Configure CMake → Xcode project
-      # Firebird CMakeLists.txt is inside ./firebird/
-      ############################################################
-      - name: Configure CMake for iOS
+      - name: Build Firebird for iOS (qmake)
+        env:
+          # Qt setzt QT_ROOT_DIR automatisch; wir nutzen es direkt
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
         run: |
-          mkdir build-ios
+          set -euxo pipefail
+
+          # Fallback, falls $QMAKE aus dem env oben nicht gesetzt wurde
+          if [ -z "${QMAKE:-}" ]; then
+            QMAKE="$QT_ROOT_DIR/bin/qmake"
+          fi
+
+          echo "Using qmake at: $QMAKE"
+
+          mkdir -p build-ios
           cd build-ios
 
-          cmake ../firebird \
-            -G Xcode \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$Qt6_DIR;$Qt6_IOS_DIR" \
-            -DQT_HOST_PATH="$Qt6_DIR"
+          # qmake für iOS; kein JIT/Translation-Sonderfall
+          "$QMAKE" ../firebird.pro \
+            -spec macx-ios-clang \
+            CONFIG+=release \
+            CONFIG+=iphoneos \
+            CONFIG+=device
 
-      ############################################################
-      # Build Firebird (unsigned)
-      ############################################################
-      - name: Build Firebird iOS app
+          # qmake erzeugt ein Wrapper-Makefile, das intern xcodebuild aufruft
+          make -j"$(sysctl -n hw.logicalcpu)"
+
+      - name: Package unsigned IPA
         run: |
+          set -euxo pipefail
           cd build-ios
-          xcodebuild \
-            -scheme Firebird \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath derived
 
-      ############################################################
-      # Package unsigned IPA
-      ############################################################
-      - name: Create unsigned IPA
-        run: |
-          cd build-ios/derived/Build/Products/Release-iphoneos
+          # irgendein erzeugtes .app finden (Name kann sich ändern)
+          APP_BUNDLE="$(find . -maxdepth 5 -name '*.app' | head -n 1 || true)"
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "Kein .app-Bundle gefunden"
+            find . -maxdepth 6 -type d | sed 's/^/DIR: /'
+            exit 1
+          fi
+
+          echo "Gefundenes App-Bundle: $APP_BUNDLE"
+
+          rm -rf Payload
           mkdir Payload
-          cp -R Firebird.app Payload/
-          zip -r Firebird-unsigned.ipa Payload
+          cp -R "$APP_BUNDLE" Payload/
 
-      ############################################################
-      # Upload artifact
-      ############################################################
+          # .ipa ist im Kern nur ein ZIP mit einem Payload-Verzeichnis
+          /usr/bin/zip -r firebird-ios-unsigned.ipa Payload
+
+          ls -lh firebird-ios-unsigned.ipa
+
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firebird-ios-unsigned
-          path: build-ios/derived/Build/Products/Release-iphoneos/Firebird-unsigned.ipa
+          name: firebird-ios-unsigned-ipa
+          path: build-ios/firebird-ios-unsigned.ipa
+          if-no-files-found: error

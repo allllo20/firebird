@@ -1,0 +1,34 @@
+name: Build iOS (Unsigned)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter packages
+        run: flutter pub get
+
+      # Falls Firebird eigene Build-Skripte hat, hier ergänzen
+      # - run: ./scripts/...
+
+      - name: Build iOS IPA (Unsigned)
+        run: flutter build ipa --no-codesign
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-unsigned
+          path: build/ios/ipa/*.ipa

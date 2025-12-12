@@ -1,24 +1,29 @@
-name: iOS (unsigned IPA)
+name: iOS (unsigned IPA, Qt5 self-built)
 
 on:
   workflow_dispatch:
     inputs:
       jit:
-        description: "Build with TRANSLATION_ENABLED (JIT/translation) workaround not applied automatically"
+        description: "TRANSLATION_ENABLED=true (needs asmcode_arm.S in Xcode target)"
         required: true
         default: "false"
         type: choice
         options: ["false", "true"]
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
 
 permissions:
   contents: write
 
 jobs:
-  ios-unsigned-ipa:
+  ios:
     runs-on: macos-14
+
+    env:
+      QT_VER: "5.15.2"
+      QT_PREFIX: "${{ github.workspace }}/qt-ios"
+      QT_SRC_DIR: "${{ github.workspace }}/qt-src"
+      BUILD_QT_DIR: "${{ github.workspace }}/qt-build-ios"
 
     steps:
       - name: Checkout (with submodules)
@@ -27,47 +32,140 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # Qt installieren (Host + iOS target)
-      - name: Install Qt (macOS + iOS)
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: "5.15.2"
-          host: "mac"
-          target: "ios"
-          arch: "clang_64"
-          cache: true
+      - name: Xcode select
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Build Xcode project via qmake
+      # Cache the installed Qt prefix (saves huge time on reruns)
+      - name: Cache Qt iOS build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.QT_PREFIX }}
+          key: qt-ios-${{ runner.os }}-${{ runner.arch }}-${{ env.QT_VER }}-v1
+
+      - name: Build Qt 5.15.2 for iOS (only if not cached)
+        if: ${{ !exists(env.QT_PREFIX) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Detect cache-hit by checking qmake presence
+          if [[ -x "${QT_PREFIX}/bin/qmake" ]]; then
+            echo "Qt already present in ${QT_PREFIX}"
+            exit 0
+          fi
+
+          rm -rf "${QT_SRC_DIR}" "${BUILD_QT_DIR}"
+          mkdir -p "${QT_SRC_DIR}" "${BUILD_QT_DIR}"
+
+          cd "${QT_SRC_DIR}"
+          curl -L -o qt.tar.xz "https://download.qt.io/archive/qt/5.15/${QT_VER}/single/qt-everywhere-src-${QT_VER}.tar.xz"
+          tar -xf qt.tar.xz --strip-components=1
+
+          cd "${BUILD_QT_DIR}"
+
+          # Minimal modules for this repo (QtWidgets + QtQuick/QML)
+          # (Qt 5 build system uses ./configure; -xplatform is key for iOS)
+          "${QT_SRC_DIR}/configure" \
+            -opensource -confirm-license \
+            -release \
+            -xplatform macx-ios-clang \
+            -prefix "${QT_PREFIX}" \
+            -nomake examples -nomake tests \
+            -no-dbus \
+            -skip qtwebengine \
+            -skip qtpurchasing \
+            -skip qtspeech \
+            -skip qtgamepad \
+            -skip qtsensors
+
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
+
+          "${QT_PREFIX}/bin/qmake" -v
+
+      - name: Ensure Qt is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "${QT_PREFIX}/bin/qmake"
+          echo "${QT_PREFIX}/bin" >> "$GITHUB_PATH"
+
+      - name: Generate Xcode project (qmake)
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build-ios
           cd build-ios
 
-          JIT_INPUT="${{ inputs.jit || 'false' }}"
-          if [[ "$JIT_INPUT" == "true" ]]; then
-            echo "NOTE: JIT enabled. Repo README mentions qmake/xcodeproj quirk with asmcode_arm.S. This workflow does NOT auto-patch that."
+          if [[ "${{ inputs.jit || 'false' }}" == "true" ]]; then
             QMAKE_DEFS="TRANSLATION_ENABLED=true"
           else
             QMAKE_DEFS="TRANSLATION_ENABLED=false"
           fi
 
-          # Generate Xcode project
-          qmake ../firebird.pro -spec macx-ios-clang CONFIG+=release CONFIG+=xcode "$QMAKE_DEFS"
+          qmake ../firebird.pro -spec macx-ios-clang CONFIG+=release CONFIG+=xcode ${QMAKE_DEFS}
 
-          # Detect project + scheme robustly
           PROJ="$(ls -1 *.xcodeproj | head -n 1)"
-          echo "Using project: $PROJ"
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
+
+      # Auto-fix the repo-documented qmake/Xcode bug when JIT/translation is enabled
+      - name: Patch Xcode project to include asmcode_arm.S (jit=true)
+        if: ${{ (inputs.jit || 'false') == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build-ios
+
+          # Install xcodeproj gem to edit pbxproj safely
+          sudo gem install xcodeproj -N
+
+          ruby - <<'RUBY'
+          require "xcodeproj"
+
+          proj_path = ENV["PROJ"]
+          abort "Missing PROJ" unless proj_path && File.exist?(proj_path)
+
+          project = Xcodeproj::Project.open(proj_path)
+
+          # Try to locate the asm file in the repo tree
+          asm_rel = "core/asmcode_arm.S"
+          asm_abs = File.expand_path(File.join("..", asm_rel), Dir.pwd)
+          abort "Cannot find #{asm_abs}" unless File.exist?(asm_abs)
+
+          # Add file reference (or reuse)
+          file_ref = project.files.find { |f| f.path == asm_abs } ||
+                     project.new_file(asm_abs)
+
+          # Add to main target sources
+          target = project.targets.first
+          abort "No targets found" unless target
+
+          already = target.source_build_phase.files_references.any? { |fr| fr.path == file_ref.path }
+          unless already
+            target.add_file_references([file_ref])
+          end
+
+          project.save
+          puts "Patched: added asmcode_arm.S to target sources"
+          RUBY
+
+      - name: Build (unsigned) with xcodebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build-ios
 
           xcodebuild -list -project "$PROJ"
 
           SCHEME="$(xcodebuild -list -project "$PROJ" | awk '/Schemes:/{f=1;next} f&&NF{print $1; exit}')"
-          if [[ -z "${SCHEME:-}" ]]; then
-            echo "Could not detect scheme"; exit 1
-          fi
-          echo "Using scheme: $SCHEME"
+          test -n "$SCHEME"
 
-          # Build for device WITHOUT signing
           xcodebuild \
             -project "$PROJ" \
             -scheme "$SCHEME" \
@@ -86,10 +184,7 @@ jobs:
           cd build-ios
 
           APP_PATH="$(find . -type d -name "*.app" -path "*Release-iphoneos*" | head -n 1)"
-          if [[ -z "${APP_PATH:-}" ]]; then
-            echo "No .app found (expected under *Release-iphoneos*)"; exit 1
-          fi
-          echo "Found app: $APP_PATH"
+          test -n "$APP_PATH"
 
           rm -rf Payload
           mkdir -p Payload
@@ -106,7 +201,6 @@ jobs:
           name: ios-unsigned-ipa
           path: ${{ env.IPA_PATH }}
 
-      # Optional: attach to tag releases (v*)
       - name: Upload to GitHub Release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2

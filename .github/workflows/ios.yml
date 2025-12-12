@@ -1,87 +1,114 @@
-name: Build iOS IPA
+name: iOS (unsigned IPA)
 
 on:
   workflow_dispatch:
+    inputs:
+      jit:
+        description: "Build with TRANSLATION_ENABLED (JIT/translation) workaround not applied automatically"
+        required: true
+        default: "false"
+        type: choice
+        options: ["false", "true"]
   push:
-    branches:
-      - master
-      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
-  build-ios:
+  ios-unsigned-ipa:
     runs-on: macos-14
 
     steps:
-      - name: Checkout repository WITH submodules
+      - name: Checkout (with submodules)
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      - name: Install Qt for iOS
+      # Qt installieren (Host + iOS target)
+      - name: Install Qt (macOS + iOS)
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.6.3'
-          host: 'mac'
-          target: 'ios'
-          arch: 'ios'
-          dir: '${{ github.workspace }}/qt'
-          modules: ""
+          version: "5.15.2"
+          host: "mac"
+          target: "ios"
+          arch: "clang_64"
+          cache: true
 
-      - name: Build Firebird for iOS (unsigned)
-        env:
-          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+      - name: Build Xcode project via qmake
+        shell: bash
         run: |
-          set -euxo pipefail
-
-          # Determine qmake path
-          if [ -z "${QMAKE:-}" ]; then
-            QMAKE="$QT_ROOT_DIR/bin/qmake"
-          fi
-
+          set -euo pipefail
           mkdir -p build-ios
           cd build-ios
 
-          # Generate Xcode project
-          "$QMAKE" ../firebird.pro \
-            -spec macx-ios-clang \
-            CONFIG+=release \
-            CONFIG+=iphoneos \
-            CONFIG+=device
-
-          # Build using xcodebuild (unsigned)
-          xcodebuild \
-            -project firebird-emu.xcodeproj \
-            -scheme firebird-emu \
-            -configuration Release \
-            -sdk iphoneos \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            -derivedDataPath derived \
-            build
-
-
-      - name: Package unsigned IPA
-        run: |
-          set -euxo pipefail
-          cd build-ios
-
-          APP_BUNDLE="$(find . -maxdepth 6 -name '*.app' | head -n 1 || true)"
-          if [ -z "$APP_BUNDLE" ]; then
-            echo "No .app found!"
-            exit 1
+          JIT_INPUT="${{ inputs.jit || 'false' }}"
+          if [[ "$JIT_INPUT" == "true" ]]; then
+            echo "NOTE: JIT enabled. Repo README mentions qmake/xcodeproj quirk with asmcode_arm.S. This workflow does NOT auto-patch that."
+            QMAKE_DEFS="TRANSLATION_ENABLED=true"
+          else
+            QMAKE_DEFS="TRANSLATION_ENABLED=false"
           fi
 
+          # Generate Xcode project
+          qmake ../firebird.pro -spec macx-ios-clang CONFIG+=release CONFIG+=xcode "$QMAKE_DEFS"
+
+          # Detect project + scheme robustly
+          PROJ="$(ls -1 *.xcodeproj | head -n 1)"
+          echo "Using project: $PROJ"
+
+          xcodebuild -list -project "$PROJ"
+
+          SCHEME="$(xcodebuild -list -project "$PROJ" | awk '/Schemes:/{f=1;next} f&&NF{print $1; exit}')"
+          if [[ -z "${SCHEME:-}" ]]; then
+            echo "Could not detect scheme"; exit 1
+          fi
+          echo "Using scheme: $SCHEME"
+
+          # Build for device WITHOUT signing
+          xcodebuild \
+            -project "$PROJ" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package unsigned .ipa
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build-ios
+
+          APP_PATH="$(find . -type d -name "*.app" -path "*Release-iphoneos*" | head -n 1)"
+          if [[ -z "${APP_PATH:-}" ]]; then
+            echo "No .app found (expected under *Release-iphoneos*)"; exit 1
+          fi
+          echo "Found app: $APP_PATH"
+
           rm -rf Payload
-          mkdir Payload
-          cp -R "$APP_BUNDLE" Payload/
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
 
-          zip -r firebird-ios-unsigned.ipa Payload
+          IPA_NAME="Firebird-unsigned-${GITHUB_REF_NAME:-manual}.ipa"
+          /usr/bin/zip -r "$IPA_NAME" Payload >/dev/null
 
-      - name: Upload IPA artifact
+          echo "IPA_PATH=$(pwd)/$IPA_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firebird-ios-unsigned
-          path: build-ios/firebird-ios-unsigned.ipa
-          if-no-files-found: error
+          name: ios-unsigned-ipa
+          path: ${{ env.IPA_PATH }}
+
+      # Optional: attach to tag releases (v*)
+      - name: Upload to GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.IPA_PATH }}

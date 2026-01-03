@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       jit:
-        description: "TRANSLATION_ENABLED=true (needs asmcode_arm.S in Xcode target)"
+        description: "TRANSLATION_ENABLED=true (adds asmcode_arm.S to Xcode target automatically)"
         required: true
         default: "false"
         type: choice
@@ -40,8 +40,8 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      # Cache the installed Qt prefix (saves huge time on reruns)
       - name: Cache Qt iOS build
+        id: cache-qt
         uses: actions/cache@v4
         with:
           path: |
@@ -49,16 +49,10 @@ jobs:
           key: qt-ios-${{ runner.os }}-${{ runner.arch }}-${{ env.QT_VER }}-v1
 
       - name: Build Qt 5.15.2 for iOS (only if not cached)
-        if: ${{ !exists(env.QT_PREFIX) }}
+        if: steps.cache-qt.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
-
-          # Detect cache-hit by checking qmake presence
-          if [[ -x "${QT_PREFIX}/bin/qmake" ]]; then
-            echo "Qt already present in ${QT_PREFIX}"
-            exit 0
-          fi
 
           rm -rf "${QT_SRC_DIR}" "${BUILD_QT_DIR}"
           mkdir -p "${QT_SRC_DIR}" "${BUILD_QT_DIR}"
@@ -69,8 +63,6 @@ jobs:
 
           cd "${BUILD_QT_DIR}"
 
-          # Minimal modules for this repo (QtWidgets + QtQuick/QML)
-          # (Qt 5 build system uses ./configure; -xplatform is key for iOS)
           "${QT_SRC_DIR}/configure" \
             -opensource -confirm-license \
             -release \
@@ -114,7 +106,6 @@ jobs:
           PROJ="$(ls -1 *.xcodeproj | head -n 1)"
           echo "PROJ=$PROJ" >> "$GITHUB_ENV"
 
-      # Auto-fix the repo-documented qmake/Xcode bug when JIT/translation is enabled
       - name: Patch Xcode project to include asmcode_arm.S (jit=true)
         if: ${{ (inputs.jit || 'false') == 'true' }}
         shell: bash
@@ -122,7 +113,6 @@ jobs:
           set -euo pipefail
           cd build-ios
 
-          # Install xcodeproj gem to edit pbxproj safely
           sudo gem install xcodeproj -N
 
           ruby - <<'RUBY'
@@ -133,23 +123,17 @@ jobs:
 
           project = Xcodeproj::Project.open(proj_path)
 
-          # Try to locate the asm file in the repo tree
           asm_rel = "core/asmcode_arm.S"
           asm_abs = File.expand_path(File.join("..", asm_rel), Dir.pwd)
           abort "Cannot find #{asm_abs}" unless File.exist?(asm_abs)
 
-          # Add file reference (or reuse)
-          file_ref = project.files.find { |f| f.path == asm_abs } ||
-                     project.new_file(asm_abs)
+          file_ref = project.files.find { |f| f.path == asm_abs } || project.new_file(asm_abs)
 
-          # Add to main target sources
           target = project.targets.first
           abort "No targets found" unless target
 
           already = target.source_build_phase.files_references.any? { |fr| fr.path == file_ref.path }
-          unless already
-            target.add_file_references([file_ref])
-          end
+          target.add_file_references([file_ref]) unless already
 
           project.save
           puts "Patched: added asmcode_arm.S to target sources"

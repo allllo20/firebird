@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   ios:
-    runs-on: macos-14
+    runs-on: macos-12
 
     env:
       QT_VER: "5.15.2"
@@ -32,13 +32,24 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Xcode select
+      - name: Select Xcode 14 (best-effort)
         shell: bash
         run: |
           set -euo pipefail
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          ls -1 /Applications | sed -n 's/^/APP: /p'
+
+          # Prefer any Xcode_14*.app if present
+          XCODE_APP="$(ls -1 /Applications | grep -E '^Xcode_14.*\.app$' | head -n 1 || true)"
+          if [[ -n "${XCODE_APP}" ]]; then
+            sudo xcode-select -s "/Applications/${XCODE_APP}/Contents/Developer"
+          else
+            # Fallback to default Xcode on the runner
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          fi
+
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
+          xcodebuild -showsdks | sed -n '1,200p'
 
       - name: Cache Qt iOS build
         id: cache-qt
@@ -46,7 +57,7 @@ jobs:
         with:
           path: |
             ${{ env.QT_PREFIX }}
-          key: qt-ios-${{ runner.os }}-${{ runner.arch }}-${{ env.QT_VER }}-v1
+          key: qt-ios-${{ runner.os }}-${{ runner.arch }}-${{ env.QT_VER }}-v2
 
       - name: Build Qt 5.15.2 for iOS (only if not cached)
         if: steps.cache-qt.outputs.cache-hit != 'true'
@@ -63,6 +74,14 @@ jobs:
 
           cd "${BUILD_QT_DIR}"
 
+          # Make failures debuggable
+          export MAKEFLAGS="-j$(sysctl -n hw.ncpu)"
+          export VERBOSE=1
+
+          # Reduce chance of "new Clang warning becomes error" issues
+          export CFLAGS="-Wno-error=unguarded-availability-new -Wno-error=deprecated-declarations -Wno-error=availability"
+          export CXXFLAGS="${CFLAGS}"
+
           "${QT_SRC_DIR}/configure" \
             -opensource -confirm-license \
             -release \
@@ -76,7 +95,8 @@ jobs:
             -skip qtgamepad \
             -skip qtsensors
 
-          make -j"$(sysctl -n hw.ncpu)"
+          # Build with verbose output so the real compiler error is visible in logs
+          make V=1
           make install
 
           "${QT_PREFIX}/bin/qmake" -v

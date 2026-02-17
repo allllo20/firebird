@@ -62,7 +62,24 @@ jobs:
       - name: Replace app icon with custom icon.png
         working-directory: build-ios
         run: |
-          # Alle benötigten iOS Icon-Größen
+          SRC="${GITHUB_WORKSPACE}/icon.png"
+          
+          # 1. Suche ALLE bestehenden AppIcon.appiconsets (auch im Projekt-Root)
+          EXISTING=$(find "${GITHUB_WORKSPACE}" -name "AppIcon.appiconset" -not -path "*/build*" -not -path "*/.git/*")
+          
+          if [ -n "$EXISTING" ]; then
+            # Verwende das erste gefundene und lösche dessen Inhalt
+            APPICONSET=$(echo "$EXISTING" | head -n 1)
+            echo "Verwende bestehendes Asset Catalog: $APPICONSET"
+            rm -f "$APPICONSET"/*.png "$APPICONSET/Contents.json"
+          else
+            # Lege neues an
+            echo "Kein Asset Catalog gefunden – lege neues an"
+            APPICONSET="${GITHUB_WORKSPACE}/ios/Assets.xcassets/AppIcon.appiconset"
+            mkdir -p "$APPICONSET"
+          fi
+
+          # 2. Alle Icon-Größen generieren
           declare -A SIZES=(
             ["Icon-20.png"]="20"
             ["Icon-20@2x.png"]="40"
@@ -81,27 +98,13 @@ jobs:
             ["Icon-1024.png"]="1024"
           )
 
-          SRC="${GITHUB_WORKSPACE}/icon.png"
-
-          # Asset Catalog finden oder anlegen
-          APPICONSET=$(find "${GITHUB_WORKSPACE}" -name "AppIcon.appiconset" -not -path "*/build*" | head -n 1)
-
-          if [ -z "$APPICONSET" ]; then
-            echo "Kein AppIcon.appiconset gefunden – lege assets/AppIcon.xcassets an"
-            APPICONSET="${GITHUB_WORKSPACE}/assets/AppIcon.xcassets/AppIcon.appiconset"
-            mkdir -p "$APPICONSET"
-          fi
-
-          echo "Icon-Ziel: $APPICONSET"
-
-          # Alle Größen erzeugen (sips ist auf macOS vorinstalliert)
           for FILENAME in "${!SIZES[@]}"; do
             SIZE="${SIZES[$FILENAME]}"
             sips -z "$SIZE" "$SIZE" "$SRC" --out "$APPICONSET/$FILENAME" > /dev/null
             echo "  ✓ $FILENAME (${SIZE}x${SIZE})"
           done
 
-          # Contents.json generieren
+          # 3. Contents.json schreiben
           cat > "$APPICONSET/Contents.json" << 'EOF'
           {
             "images": [
@@ -128,16 +131,18 @@ jobs:
           }
           EOF
 
-          # pbxproj auf das Asset Catalog zeigen lassen (falls Qt keins gesetzt hat)
+          # 4. pbxproj patchen - relativen Pfad zum Asset Catalog berechnen
           PBXPROJ=$(ls -d *.xcodeproj/project.pbxproj | head -n 1)
-          ASSETPATH=$(python3 -c "import os; print(os.path.relpath('$APPICONSET/../..', '${GITHUB_WORKSPACE}/build-ios'))")
+          XCASSETS_DIR=$(dirname "$APPICONSET")
+          REL_PATH=$(python3 -c "import os; print(os.path.relpath('$XCASSETS_DIR', '$(dirname $PBXPROJ)'))")
           
-          # Nur patchen wenn noch kein ASSETCATALOG_COMPILER_APPICON_NAME gesetzt
-          if ! grep -q "ASSETCATALOG_COMPILER_APPICON_NAME" "$PBXPROJ"; then
-            sed -i '' 's/PRODUCT_NAME = "firebird-emu";/PRODUCT_NAME = "firebird-emu";\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tASSET_CATALOG_APP_ICON_SET_PATH = '"$ASSETPATH"';/' "$PBXPROJ" || true
-          fi
+          echo "Asset Catalog Pfad: $REL_PATH"
+          
+          # Bestehende ASSETCATALOG-Einträge entfernen und neu setzen
+          sed -i '' '/ASSETCATALOG_COMPILER_APPICON_NAME/d' "$PBXPROJ"
+          sed -i '' "s|PRODUCT_NAME = \"firebird-emu\";|PRODUCT_NAME = \"firebird-emu\";\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tASSET_CATALOG_APP_ICON_SET_PATH = \"$REL_PATH\";|" "$PBXPROJ"
 
-          echo "Icons erfolgreich ersetzt."
+          echo "Icons erfolgreich ersetzt und pbxproj aktualisiert."
 
       - name: Build Qt Preprocess target first (generate all moc/rcc files)
         working-directory: build-ios

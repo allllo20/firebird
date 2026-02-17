@@ -59,6 +59,22 @@ jobs:
         working-directory: build-ios
         run: $QT_IOS/bin/rcc -name resources ../resources.qrc -o qrc_resources.cpp
 
+      - name: Build Qt Preprocess target first (generate all moc/rcc files)
+        working-directory: build-ios
+        run: |
+          XCPROJ=$(ls -d *.xcodeproj | head -n 1)
+          xcodebuild \
+            -project "$XCPROJ" \
+            -target "Qt Preprocess" \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            PROVISIONING_PROFILE="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
       - name: Build with xcodebuild (unsigned)
         working-directory: build-ios
         run: |

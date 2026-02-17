@@ -50,26 +50,21 @@ jobs:
             "TRANSLATION_ENABLED=false" \
             "QMAKE_APPLE_DEVICE_ARCHS=arm64"
 
-      - name: Patch xcodeproj – remove -mno-thumb (arm64 incompatible)
+      - name: Patch xcodeproj – remove -mno-thumb
         working-directory: build-ios
         run: |
-          PBXPROJ=$(ls -d *.xcodeproj/project.pbxproj | head -n 1)
-          sed -i '' 's/-mno-thumb//g' "$PBXPROJ"
-          grep -c 'mno-thumb' "$PBXPROJ" && echo "WARNING: still present!" || echo "OK: removed"
+          sed -i '' 's/-mno-thumb//g' *.xcodeproj/project.pbxproj
 
+      - name: Pre-generate qrc_resources.cpp   # ← neu
+        working-directory: build-ios
+        run: $QT_IOS/bin/rcc -name resources ../resources.qrc -o qrc_resources.cpp
 
-
-
-      # ── 5. Xcode-Build ohne Signierung ────────────────────────────────────
-      - name: xcodebuild (unsigned)
+      - name: Build with xcodebuild (unsigned)
         working-directory: build-ios
         run: |
           XCPROJ=$(ls -d *.xcodeproj | head -n 1)
           SCHEME=$(xcodebuild -project "$XCPROJ" -list -json \
-            | python3 -c \
-              "import json,sys; d=json.load(sys.stdin); print(d['project']['schemes'][0])")
-          echo "project=$XCPROJ  scheme=$SCHEME"
-
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['project']['schemes'][0])")
           xcodebuild \
             -project "$XCPROJ" \
             -scheme  "$SCHEME" \

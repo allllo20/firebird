@@ -25,11 +25,11 @@ jobs:
         with:
           submodules: recursive
 
-      # ── 2. Emscripten SDK (Qt 5.15.2 benötigt exakt 2.0.14) ──────────────
-      - name: Install Emscripten 2.0.14
+      # ── 2. Emscripten SDK (Qt 5.15.2 benötigt 1.39.8) ────────────────────
+      - name: Install Emscripten 1.39.8
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: 2.0.14
+          version: 1.39.8
           actions-cache-folder: emsdk-cache
 
       - name: Verify emcc
@@ -58,27 +58,7 @@ jobs:
           $QT_WASM/bin/qmake .. \
             -spec wasm-emscripten \
             "CONFIG+=release" \
-            "TRANSLATION_ENABLED=false" \
-            "QMAKE_CFLAGS+=-s USE_ZLIB=1" \
-            "QMAKE_CXXFLAGS+=-s USE_ZLIB=1" \
-            "QMAKE_LFLAGS+=-s USE_ZLIB=1"
-
-      - name: Patch Makefile – fix missing -s prefix on Emscripten linker flags
-        working-directory: build-wasm
-        run: |
-          # Qt 5.15.2 wasm mkspec erzeugt bare flags ohne -s (Bug mit Emscripten >= 2.x)
-          sed -i \
-            -e 's/\bWASM=1\b/-s WASM=1/g' \
-            -e 's/\bFULL_ES2=1\b/-s FULL_ES2=1/g' \
-            -e 's/\bFULL_ES3=1\b/-s FULL_ES3=1/g' \
-            -e 's/\bUSE_WEBGL2=1\b/-s USE_WEBGL2=1/g' \
-            -e 's/\bEXIT_RUNTIME=1\b/-s EXIT_RUNTIME=1/g' \
-            -e 's/\bERROR_ON_UNDEFINED_SYMBOLS=1\b/-s ERROR_ON_UNDEFINED_SYMBOLS=1/g' \
-            -e 's/\bEXTRA_EXPORTED_RUNTIME_METHODS=\[/-s EXTRA_EXPORTED_RUNTIME_METHODS=[/g' \
-            -e 's/\bFETCH=1\b/-s FETCH=1/g' \
-            Makefile
-          echo "Patch applied. Linker-Zeile jetzt:"
-          grep "firebird-emu.js" Makefile | head -n 3
+            "TRANSLATION_ENABLED=false"
 
       - name: Build
         working-directory: build-wasm
@@ -90,11 +70,14 @@ jobs:
           mkdir -p pages
 
           # Die von Qt WASM generierten Dateien
-          cp build-wasm/firebird-emu.html   pages/index.html   || \
-          cp build-wasm/firebird.html       pages/index.html
-          cp build-wasm/*.js                pages/
-          cp build-wasm/*.wasm              pages/
-          # Optionale Dateien (existieren nur bei bestimmten Qt-Konfigurationen)
+          if [ -f build-wasm/firebird-emu.html ]; then
+            cp build-wasm/firebird-emu.html pages/index.html
+          elif [ -f build-wasm/firebird.html ]; then
+            cp build-wasm/firebird.html pages/index.html
+          fi
+          
+          cp build-wasm/*.js                pages/ 2>/dev/null || true
+          cp build-wasm/*.wasm              pages/ 2>/dev/null || true
           cp build-wasm/*.data              pages/ 2>/dev/null || true
           cp build-wasm/*.worker.js         pages/ 2>/dev/null || true
 

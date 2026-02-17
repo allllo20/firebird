@@ -129,7 +129,15 @@ jobs:
 
           echo "Pages content:"
           ls -lh pages/
-
+      - name: Upload build artifacts (for self-hosting)
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebird-wasm-build
+          path: |
+            build-wasm/firebird-emu.html
+            build-wasm/*.js
+            build-wasm/*.wasm
+          retention-days: 90
       # ── 6. GitHub Pages Upload ────────────────────────────────────────────
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

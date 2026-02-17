@@ -40,7 +40,8 @@ jobs:
       # ── 4. qmake für iOS ausführen ────────────────────────────────────────
       # TRANSLATION_ENABLED=false = kein JIT → umgeht den asmcode_arm.S-Bug
       # aus dem README. Für JIT: auf true setzen + xcodeproj-Workaround (s.u.)
-      - name: qmake (iOS device, no JIT)
+           
+      - name: Run qmake (iOS device, no JIT)
         run: |
           mkdir build-ios && cd build-ios
           $QT_IOS/bin/qmake .. \
@@ -48,6 +49,16 @@ jobs:
             "CONFIG+=iphoneos device release" \
             "TRANSLATION_ENABLED=false" \
             "QMAKE_APPLE_DEVICE_ARCHS=arm64"
+
+      - name: Patch xcodeproj – remove -mno-thumb (arm64 incompatible)
+        working-directory: build-ios
+        run: |
+          PBXPROJ=$(ls -d *.xcodeproj/project.pbxproj | head -n 1)
+          sed -i '' 's/-mno-thumb//g' "$PBXPROJ"
+          grep -c 'mno-thumb' "$PBXPROJ" && echo "WARNING: still present!" || echo "OK: removed"
+
+
+
 
       # ── 5. Xcode-Build ohne Signierung ────────────────────────────────────
       - name: xcodebuild (unsigned)

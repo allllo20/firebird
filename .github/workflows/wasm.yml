@@ -50,6 +50,14 @@ jobs:
           echo "QT_HOST=$HOME/Qt/5.15.2/gcc_64"      >> $GITHUB_ENV
           echo "QT_WASM=$HOME/Qt/5.15.2/wasm_32"     >> $GITHUB_ENV
           echo "$HOME/Qt/5.15.2/gcc_64/bin"           >> $GITHUB_PATH
+# ── 3.5. Patch source code for WASM compatibility ──────────────────────
+      - name: Patch code – disable QThread::setTerminationEnabled for WASM
+        run: |
+          # Diese Funktion existiert nicht in Qt WASM, daher mit #ifndef EMSCRIPTEN auskommentieren
+          find . -name "*.cpp" -o -name "*.h" | xargs grep -l "setTerminationEnabled" | while read file; do
+            sed -i 's/\(.*setTerminationEnabled.*\)/#ifndef __EMSCRIPTEN__\n\1\n#endif/' "$file"
+          done
+          echo "Patched files for WASM compatibility"
 
       # ── 4. Build ──────────────────────────────────────────────────────────
       - name: Run qmake (WebAssembly)

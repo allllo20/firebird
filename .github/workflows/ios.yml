@@ -25,19 +25,17 @@ jobs:
           xcode-version: latest-stable
 
       # ── 3. Qt 5 installieren (aqtinstall) ────────────────────────────────
-      - name: Install aqtinstall
-        run: pip3 install aqtinstall
-
-      - name: Install Qt 5 – macOS host tools (qmake, moc, rcc …)
-        run: aqt install-qt mac desktop 5.15.2 clang_64 --outputdir $HOME/Qt
-
-      - name: Install Qt 5 – iOS target
-        run: aqt install-qt mac ios 5.15.2 ios --outputdir $HOME/Qt
+      - name: Install Qt 5 via aqtinstall
+        run: |
+                pipx install aqtinstall
+                aqt install-qt mac desktop 5.15.2 clang_64 --outputdir $HOME/Qt
+                aqt install-qt mac ios     5.15.2 ios       --outputdir $HOME/Qt
 
       - name: Export Qt paths
         run: |
-          echo "QT_IOS=$HOME/Qt/5.15.2/ios"         >> $GITHUB_ENV
-          echo "$HOME/Qt/5.15.2/clang_64/bin"        >> $GITHUB_PATH
+          echo "QT_IOS=$HOME/Qt/5.15.2/ios"  >> $GITHUB_ENV
+          echo "$HOME/Qt/5.15.2/clang_64/bin" >> $GITHUB_PATH
+
 
       # ── 4. qmake für iOS ausführen ────────────────────────────────────────
       # TRANSLATION_ENABLED=false = kein JIT → umgeht den asmcode_arm.S-Bug

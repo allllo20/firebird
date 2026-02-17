@@ -109,7 +109,6 @@ ColumnLayout {
             FileSelect {
                 id: snapshotEdit
                 Layout.fillWidth: true
-                selectExisting: false
                 filePath: kitList.currentItem.myData.snapshot
                 onFilePathChanged: {
                     if(filePath !== kitList.currentItem.myData.snapshot)

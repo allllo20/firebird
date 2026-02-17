@@ -51,7 +51,14 @@ jobs:
           echo "QT_WASM=$HOME/Qt/5.15.2/wasm_32"     >> $GITHUB_ENV
           echo "$HOME/Qt/5.15.2/gcc_64/bin"           >> $GITHUB_PATH
 
-      # ── 4. Build ──────────────────────────────────────────────────────────
+      # ── 4. Pre-install zlib port to avoid race conditions ────────────────
+      - name: Pre-install Emscripten zlib port
+        run: |
+          # Trigger zlib port download/installation before parallel build
+          emcc -s USE_ZLIB=1 -o /tmp/dummy.js -x c - <<< "int main(){return 0;}"
+          echo "zlib port installed successfully"
+
+      # ── 5. Build ──────────────────────────────────────────────────────────
       - name: Run qmake (WebAssembly)
         run: |
           mkdir build-wasm && cd build-wasm
@@ -65,12 +72,9 @@ jobs:
 
       - name: Build
         working-directory: build-wasm
-        run: |
-          # Emscripten muss wissen, dass zlib aus dem Port-System verwendet werden soll
-          export EMCC_CFLAGS="-s USE_ZLIB=1"
-          make -j$(nproc)
+        run: make -j$(nproc)
 
-      # ── 5. Ausgabe-Verzeichnis für Pages zusammenstellen ──────────────────
+      # ── 6. Ausgabe-Verzeichnis für Pages zusammenstellen ──────────────────
       - name: Assemble Pages directory
         run: |
           mkdir -p pages
@@ -112,7 +116,7 @@ jobs:
           echo "Pages content:"
           ls -lh pages/
 
-      # ── 6. GitHub Pages Upload ────────────────────────────────────────────
+      # ── 7. GitHub Pages Upload ────────────────────────────────────────────
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

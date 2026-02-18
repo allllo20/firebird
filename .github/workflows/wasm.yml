@@ -63,19 +63,7 @@ jobs:
             echo ""
             echo "⚠️  WARNUNG: ROM-Dateien konnten nicht geladen werden!"
             echo "   App wird OHNE embedded ROMs gebaut."
-            echo "   User muss ROMs beim ersten Start manuell auswählen."
-            echo ""
-            echo "📝 Verfügbare Dateien im Release:"
-            echo "   - boot1.img.tns"
-            echo "   - flash"
-            echo "   - snap"
-            echo ""
-            
-            # Erstelle leere Platzhalter (damit resources.qrc nicht fehlschlägt)
-            touch default_roms/boot1.img
-            touch default_roms/flash.img
-            touch default_roms/snapshot.img.tns
-            
+            touch default_roms/boot1.img default_roms/flash.img default_roms/snapshot.img.tns
             ROMS_AVAILABLE=false
           else
             echo ""
@@ -90,15 +78,13 @@ jobs:
           echo ""
           echo "📝 Patching resources.qrc..."
           
-          # Entferne schließende Tags
           sed -i.bak '/<\/qresource>/d; /<\/RCC>/d' resources.qrc
           
-          # Füge ROM-Dateien hinzu
           cat >> resources.qrc << 'EOF'
-          <!-- Embedded default ROM files -->
-            <file>default_roms/boot1.img</file>
-            <file>default_roms/flash.img</file>
-            <file>default_roms/snapshot.img.tns</file>
+              <!-- Embedded default ROM files -->
+              <file>default_roms/boot1.img</file>
+              <file>default_roms/flash.img</file>
+              <file>default_roms/snapshot.img.tns</file>
           </qresource>
           </RCC>
           EOF
@@ -111,21 +97,19 @@ jobs:
           echo ""
           echo "📝 Patching main.cpp..."
           
-          # Prüfe ob bereits gepatcht
           if grep -q "setupDefaultKitIfNeeded" main.cpp; then
             echo "  ℹ️  main.cpp bereits gepatcht, überspringe..."
           else
-            # Füge die Setup-Funktion nach den includes ein
             sed -i.bak '/^#include.*mainwindow/a\
           \
           /* Auto-setup function for embedded default ROM files */\
           static bool setupDefaultKitIfNeeded(KitModel *model) {\
-              if (model->rowCount() > 0) return true; /* Already configured */\
+              if (model->rowCount() > 0) return true;\
               qDebug() << "No kits found, setting up default kit...";\
               QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);\
               QDir().mkpath(dataDir);\
               auto extractResource = [&](const QString& res, const QString& name) -> QString {\
-                  QString target = dataDir + "/" + name;\
+                  QString target = dataDir + QLatin1String("/") + name;\
                   if (!QFile::exists(target)) {\
                       if (QFile::copy(res, target)) {\
                           QFile::setPermissions(target, QFileDevice::ReadOwner | QFileDevice::WriteOwner);\
@@ -137,26 +121,19 @@ jobs:
                   }\
                   return target;\
               };\
-              QString boot1 = extractResource(":/default_roms/boot1.img", "default_boot1.img");\
-              QString flash = extractResource(":/default_roms/flash.img", "default_flash.img");\
-              QString snapshot = extractResource(":/default_roms/snapshot.img.tns", "default_snapshot.img.tns");\
+              QString boot1 = extractResource(QLatin1String(":/default_roms/boot1.img"), QLatin1String("default_boot1.img"));\
+              QString flash = extractResource(QLatin1String(":/default_roms/flash.img"), QLatin1String("default_flash.img"));\
+              QString snapshot = extractResource(QLatin1String(":/default_roms/snapshot.img.tns"), QLatin1String("default_snapshot.img.tns"));\
               if (boot1.isEmpty() || flash.isEmpty() || snapshot.isEmpty()) {\
-                  qWarning() << "Failed to setup default kit - ROM extraction failed";\
+                  qWarning() << "Failed to setup default kit";\
                   return false;\
               }\
-              Kit kit;\
-              kit.name = "Default Calculator";\
-              kit.boot1 = boot1;\
-              kit.flash = flash;\
-              kit.snapshot = snapshot;\
-              kit.type = 0; /* CX */\
-              model->addKit(kit);\
-              qDebug() << "Default kit created successfully!";\
+              model->addKit(QLatin1String("Default Calculator"), boot1, flash, snapshot);\
+              qDebug() << "Default kit created!";\
               return true;\
           }
           ' main.cpp
             
-            # Füge Setup-Aufruf nach kit_model.load() ein
             sed -i.bak 's/\(kit_model\.load();\)/\1\n    setupDefaultKitIfNeeded(\&kit_model);/' main.cpp
             
             echo "  ✓ main.cpp gepatcht"
@@ -172,38 +149,31 @@ jobs:
             if grep -q "setupDefaultKitIfNeeded" qmlbridge.cpp; then
               echo "  ℹ️  qmlbridge.cpp bereits gepatcht, überspringe..."
             else
-              # Füge die Setup-Funktion ein
               sed -i.bak '/^#include.*qmlbridge/a\
-            \
-            /* Auto-setup function for embedded default ROM files */\
-            static bool setupDefaultKitIfNeeded(KitModel *model) {\
-                if (model->rowCount() > 0) return true;\
-                qDebug() << "No kits found, setting up default kit...";\
-                QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);\
-                QDir().mkpath(dataDir);\
-                auto extractResource = [&](const QString& res, const QString& name) -> QString {\
-                    QString target = dataDir + "/" + name;\
-                    if (!QFile::exists(target)) {\
-                        if (QFile::copy(res, target)) {\
-                            QFile::setPermissions(target, QFileDevice::ReadOwner | QFileDevice::WriteOwner);\
-                        }\
-                    }\
-                    return target;\
-                };\
-                QString boot1 = extractResource(":/default_roms/boot1.img", "default_boot1.img");\
-                QString flash = extractResource(":/default_roms/flash.img", "default_flash.img");\
-                QString snapshot = extractResource(":/default_roms/snapshot.img.tns", "default_snapshot.img.tns");\
-                if (boot1.isEmpty() || flash.isEmpty() || snapshot.isEmpty()) return false;\
-                Kit kit;\
-                kit.name = "Default Calculator";\
-                kit.boot1 = boot1; kit.flash = flash; kit.snapshot = snapshot; kit.type = 0;\
-                model->addKit(kit);\
-                qDebug() << "Default kit created!";\
-                return true;\
-            }
-            ' qmlbridge.cpp
+          \
+          /* Auto-setup function for embedded default ROM files */\
+          static bool setupDefaultKitIfNeeded(KitModel *model) {\
+              if (model->rowCount() > 0) return true;\
+              QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);\
+              QDir().mkpath(dataDir);\
+              auto extractResource = [&](const QString& res, const QString& name) -> QString {\
+                  QString target = dataDir + QLatin1String("/") + name;\
+                  if (!QFile::exists(target)) {\
+                      if (QFile::copy(res, target)) {\
+                          QFile::setPermissions(target, QFileDevice::ReadOwner | QFileDevice::WriteOwner);\
+                      }\
+                  }\
+                  return target;\
+              };\
+              QString boot1 = extractResource(QLatin1String(":/default_roms/boot1.img"), QLatin1String("default_boot1.img"));\
+              QString flash = extractResource(QLatin1String(":/default_roms/flash.img"), QLatin1String("default_flash.img"));\
+              QString snapshot = extractResource(QLatin1String(":/default_roms/snapshot.img.tns"), QLatin1String("default_snapshot.img.tns"));\
+              if (boot1.isEmpty() || flash.isEmpty() || snapshot.isEmpty()) return false;\
+              model->addKit(QLatin1String("Default Calculator"), boot1, flash, snapshot);\
+              return true;\
+          }
+          ' qmlbridge.cpp
               
-              # Füge Setup-Aufruf ein
               sed -i.bak 's/\(kit_model\.load();\)/\1\n    setupDefaultKitIfNeeded(\&kit_model);/' qmlbridge.cpp
               
               echo "  ✓ qmlbridge.cpp gepatcht"
@@ -211,18 +181,14 @@ jobs:
           fi
           
           # ═══════════════════════════════════════════════════════════════
-          # 5. Status-Zusammenfassung
+          # 5. Status
           # ═══════════════════════════════════════════════════════════════
           echo ""
           echo "════════════════════════════════════════════════════════"
           if [ "$ROMS_AVAILABLE" = true ]; then
             echo "✅ ROM-Setup erfolgreich!"
-            echo "   App wird mit embedded Default-ROMs gebaut."
-            echo "   User kann sofort loslegen ohne Dateien auszuwählen."
           else
             echo "⚠️  ROM-Setup übersprungen!"
-            echo "   App funktioniert, aber User muss beim ersten Start"
-            echo "   ROM-Dateien manuell auswählen."
           fi
           echo "════════════════════════════════════════════════════════"
 

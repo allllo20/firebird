@@ -44,7 +44,7 @@ jobs:
             local local_name=$2
             local url="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${remote_name}"
             
-            if curl -f -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            if curl -f -L  \
               -o "default_roms/${local_name}" "${url}" 2>/dev/null; then
               echo "  ✓ ${remote_name} → ${local_name} ($(du -h default_roms/${local_name} | cut -f1))"
               return 0

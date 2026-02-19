@@ -78,8 +78,7 @@ jobs:
             "QMAKE_CFLAGS+=-s USE_ZLIB=1" \
             "QMAKE_CXXFLAGS+=-s USE_ZLIB=1" \
             "QMAKE_LFLAGS+=-s USE_ZLIB=1" \
-            "QMAKE_LFLAGS+=--preload-file ../roms@/roms" \
-            "QMAKE_LFLAGS+=-s LZ4=1"
+            "QMAKE_LFLAGS+=--preload-file ../roms@/roms"
 
       - name: Patch Makefile – fix missing -s prefix on Emscripten linker flags
         working-directory: build-wasm
@@ -134,9 +133,8 @@ jobs:
           });
           EOF
 
-          # Service Worker aktivieren
-          sed -i 's|<head>|<head>\n<script>if(!crossOriginIsolated){const r=new Promise(res=>navigator.serviceWorker.register("coi-serviceworker.js").then(res,res));if(!navigator.serviceWorker.controller)r.then(()=>location.reload());}</script>|' deploy/index.html
-
+          sed -i 's|<head>|<head><script>if(!crossOriginIsolated && !navigator.serviceWorker.controller){navigator.serviceWorker.register("coi-serviceworker.js").then(r=>r.update()).then(()=>window.location.reload());window.stop();}</script>|' deploy/index.html
+          
           # README mit Anweisungen
           cat > deploy/README.txt << 'EOF'
           FIREBIRD WEBASSEMBLY BUILD

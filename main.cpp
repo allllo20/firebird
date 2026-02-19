@@ -19,6 +19,25 @@
 #include <sys/syscall.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+void initializeDefaultWasmKit() {
+    auto kit_model = the_qml_bridge->getKitModel();
+    
+    // Check if default WASM kit already exists
+    if (kit_model->rowCount() == 0) {
+        kit_model->addKit(
+            QStringLiteral("WebAssembly Default"),
+            QStringLiteral("/roms/boot1.img.tns"),
+            QStringLiteral("/roms/flash"),
+            QStringLiteral("/roms/snap")
+        );
+        
+        the_qml_bridge->setDefaultKit(0);
+    }
+}
+#endif
+
+
 /* This function reads all keys of all sections available in a QSettings
  * instance created with org and app as parameters. */
 static QVariantHash readOldSettings(const QString &org, const QString &app)
@@ -108,6 +127,10 @@ int main(int argc, char **argv)
     qRegisterMetaType<KitModel>();
 
     migrateSettings();
+
+    #ifdef __EMSCRIPTEN__
+initializeDefaultWasmKit();
+#endif
 
     QMLBridge qmlBridge;
     QQmlEngine::setObjectOwnership(&qmlBridge, QQmlEngine::CppOwnership);

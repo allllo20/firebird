@@ -56,6 +56,17 @@ jobs:
           done
           echo "Patched files for WASM compatibility"
 
+          
+      - name: Download ROM files
+        run: |
+          mkdir -p roms
+          cd roms
+          wget https://github.com/allllo20/firebird/releases/download/roms-v1.0/boot1.img.tns
+          wget https://github.com/allllo20/firebird/releases/download/roms-v1.0/flash
+          wget https://github.com/allllo20/firebird/releases/download/roms-v1.0/snap
+          cd ..
+
+
       # ── 4. Build ──────────────────────────────────────────────────────────
       - name: Run qmake (WebAssembly)
         run: |
@@ -66,7 +77,8 @@ jobs:
             "TRANSLATION_ENABLED=false" \
             "QMAKE_CFLAGS+=-s USE_ZLIB=1" \
             "QMAKE_CXXFLAGS+=-s USE_ZLIB=1" \
-            "QMAKE_LFLAGS+=-s USE_ZLIB=1"
+            "QMAKE_LFLAGS+=-s USE_ZLIB=1" \
+            "QMAKE_LFLAGS+=--preload-file ../roms@/roms"
 
       - name: Patch Makefile – fix missing -s prefix on Emscripten linker flags
         working-directory: build-wasm

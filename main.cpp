@@ -128,9 +128,7 @@ int main(int argc, char **argv)
 
     migrateSettings();
 
-    #ifdef __EMSCRIPTEN__
-initializeDefaultWasmKit();
-#endif
+
 
     QMLBridge qmlBridge;
     QQmlEngine::setObjectOwnership(&qmlBridge, QQmlEngine::CppOwnership);

@@ -56,6 +56,41 @@ fileLoad = function(event, filename)
 
 startEmulation = function()
 {
+    var fileExists = function(path) {
+        try {
+            FS.stat(path);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    };
+
+    var ensureFile = function(targetPath, candidatePaths) {
+        if (fileExists(targetPath)) {
+            return true;
+        }
+
+        for (var i = 0; i < candidatePaths.length; i++) {
+            var sourcePath = candidatePaths[i];
+            if (!fileExists(sourcePath)) {
+                continue;
+            }
+
+            FS.writeFile(targetPath, FS.readFile(sourcePath), { encoding: 'binary' });
+            return true;
+        }
+
+        return false;
+    };
+
+    var hasBoot1 = ensureFile("boot1.img", ["/roms/boot1.img", "/roms/boot1.img.tns"]);
+    var hasFlash = ensureFile("flash.img", ["/roms/flash.img", "/roms/flash"]);
+
+    if (!hasBoot1 || !hasFlash) {
+        alert("ROM files missing. Please choose Boot1 and Flash files, or preload them in /roms.");
+        return;
+    }
+
     return Module.callMain();
 }
 

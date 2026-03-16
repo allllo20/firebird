@@ -1,6 +1,7 @@
 #include <cassert>
 #include <unistd.h>
 
+#include <QFile>
 #include <QUrl>
 
 #include "emuthread.h"
@@ -54,6 +55,36 @@ QMLBridge::QMLBridge(QObject *parent) : QObject(parent)
                      settings.value(QStringLiteral("flash")).toString(),
                      settings.value(QStringLiteral("snapshotPath")).toString());
     }
+
+#ifdef __EMSCRIPTEN__
+    QString boot1_path;
+    QString flash_path;
+
+    if(QFile::exists(QStringLiteral("/roms/boot1.img")))
+        boot1_path = QStringLiteral("/roms/boot1.img");
+    else if(QFile::exists(QStringLiteral("/roms/boot1.img.tns")))
+        boot1_path = QStringLiteral("/roms/boot1.img.tns");
+
+    if(QFile::exists(QStringLiteral("/roms/flash.img")))
+        flash_path = QStringLiteral("/roms/flash.img");
+    else if(QFile::exists(QStringLiteral("/roms/flash")))
+        flash_path = QStringLiteral("/roms/flash");
+
+    if(!boot1_path.isEmpty() && !flash_path.isEmpty())
+    {
+        int default_kit = kit_model.indexForID(getDefaultKit());
+        if(default_kit < 0 && kit_model.rowCount() > 0)
+            default_kit = 0;
+
+        if(default_kit >= 0)
+        {
+            if(kit_model.getDataRow(default_kit, KitModel::Boot1Role).toString().isEmpty())
+                kit_model.setDataRow(default_kit, boot1_path, KitModel::Boot1Role);
+            if(kit_model.getDataRow(default_kit, KitModel::FlashRole).toString().isEmpty())
+                kit_model.setDataRow(default_kit, flash_path, KitModel::FlashRole);
+        }
+    }
+#endif
 
     // Same for debug_on_*
     debug_on_start = getDebugOnStart();

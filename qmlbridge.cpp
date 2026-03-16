@@ -22,6 +22,9 @@ QMLBridge::QMLBridge(QObject *parent) : QObject(parent)
 #ifdef IS_IOS_BUILD
 /* This is needed for iOS, as the app location changes at reinstall */
 , settings(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + QStringLiteral("/firebird.ini"), QSettings::IniFormat)
+#elif defined(__EMSCRIPTEN__)
+/* Avoid platform-default settings backend issues in WASM runtime. */
+, settings(QStringLiteral("firebird.ini"), QSettings::IniFormat)
 #endif
 {
     assert(the_qml_bridge == nullptr);

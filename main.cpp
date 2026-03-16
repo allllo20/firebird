@@ -108,7 +108,9 @@ int main(int argc, char **argv)
     qRegisterMetaTypeStreamOperators<KitModel>();
     qRegisterMetaType<KitModel>();
 
+    #ifndef __EMSCRIPTEN__
     migrateSettings();
+    #endif
 
 
 

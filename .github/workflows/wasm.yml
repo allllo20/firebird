@@ -74,6 +74,7 @@ jobs:
           $QT_WASM/bin/qmake .. \
             -spec wasm-emscripten \
             "CONFIG+=release" \
+            "DEFINES+=MOBILE_UI" \
             "TRANSLATION_ENABLED=false" \
             "QMAKE_CFLAGS+=-s USE_ZLIB=1" \
             "QMAKE_CXXFLAGS+=-s USE_ZLIB=1" \

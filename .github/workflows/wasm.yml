@@ -145,7 +145,31 @@ jobs:
           });
           EOF
 
-          sed -i 's|<head>|<head><script>(function(){var p=navigator.permissions;if(!p||!p.query)return;var q=p.query.bind(p);p.query=function(desc){if(desc&&(desc.name==="clipboard-read"||desc.name==="clipboard-write"))return Promise.resolve({state:"prompt",onchange:null});try{return q(desc);}catch(e){return Promise.resolve({state:"prompt",onchange:null});}};})();if(!crossOriginIsolated && !navigator.serviceWorker.controller){navigator.serviceWorker.register("coi-serviceworker.js").then(r=>r.update()).then(()=>window.location.reload());window.stop();}</script>|' deploy/index.html
+          python3 - << 'PY'
+          from pathlib import Path
+          p = Path("deploy/index.html")
+          s = p.read_text(encoding="utf-8")
+          inject = (
+              '<head><script>'
+              '(function(){'
+              'var p=navigator.permissions;'
+              'if(!p||!p.query)return;'
+              'var q=p.query.bind(p);'
+              'p.query=function(desc){'
+              'if(desc&&(desc.name==="clipboard-read"||desc.name==="clipboard-write"))'
+              'return Promise.resolve({state:"prompt",onchange:null});'
+              'try{return q(desc);}catch(e){return Promise.resolve({state:"prompt",onchange:null});}'
+              '};'
+              '})();'
+              'if(!crossOriginIsolated && !navigator.serviceWorker.controller){'
+              'navigator.serviceWorker.register("coi-serviceworker.js").then(r=>r.update()).then(()=>window.location.reload());'
+              'window.stop();'
+              '}'
+              '</script>'
+          )
+          s = s.replace("<head>", inject, 1)
+          p.write_text(s, encoding="utf-8")
+          PY
           
           # README mit Anweisungen
           cat > deploy/README.txt << 'EOF'

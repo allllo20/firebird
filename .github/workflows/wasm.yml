@@ -114,6 +114,18 @@ jobs:
           cp build-wasm/*.data              deploy/ 2>/dev/null || true
           cp build-wasm/*.worker.js         deploy/ 2>/dev/null || true
 
+          # Keep both module name variants available (firebird and firebird-emu)
+          # so qtloader/index mismatches don't break runtime loading.
+          if [ -f deploy/firebird-emu.js ] && [ ! -f deploy/firebird.js ]; then cp deploy/firebird-emu.js deploy/firebird.js; fi
+          if [ -f deploy/firebird-emu.wasm ] && [ ! -f deploy/firebird.wasm ]; then cp deploy/firebird-emu.wasm deploy/firebird.wasm; fi
+          if [ -f deploy/firebird-emu.data ] && [ ! -f deploy/firebird.data ]; then cp deploy/firebird-emu.data deploy/firebird.data; fi
+          if [ -f deploy/firebird.js ] && [ ! -f deploy/firebird-emu.js ]; then cp deploy/firebird.js deploy/firebird-emu.js; fi
+          if [ -f deploy/firebird.wasm ] && [ ! -f deploy/firebird-emu.wasm ]; then cp deploy/firebird.wasm deploy/firebird-emu.wasm; fi
+          if [ -f deploy/firebird.data ] && [ ! -f deploy/firebird-emu.data ]; then cp deploy/firebird.data deploy/firebird-emu.data; fi
+
+          # Disable Jekyll processing on GitHub Pages to avoid edge-case asset handling.
+          touch deploy/.nojekyll
+
           # Service Worker für Server ohne COOP/COEP Header
           cat > deploy/coi-serviceworker.js << 'EOF'
           /* coi-serviceworker v0.1.7 – for servers without COOP/COEP headers */
@@ -133,7 +145,7 @@ jobs:
           });
           EOF
 
-          sed -i 's|<head>|<head><script>if(!crossOriginIsolated && !navigator.serviceWorker.controller){navigator.serviceWorker.register("coi-serviceworker.js").then(r=>r.update()).then(()=>window.location.reload());window.stop();}</script>|' deploy/index.html
+          sed -i 's|<head>|<head><script>(function(){var p=navigator.permissions;if(!p||!p.query)return;var q=p.query.bind(p);p.query=function(desc){if(desc&&(desc.name==="clipboard-read"||desc.name==="clipboard-write"))return Promise.resolve({state:"prompt",onchange:null});try{return q(desc);}catch(e){return Promise.resolve({state:"prompt",onchange:null});}};})();if(!crossOriginIsolated && !navigator.serviceWorker.controller){navigator.serviceWorker.register("coi-serviceworker.js").then(r=>r.update()).then(()=>window.location.reload());window.stop();}</script>|' deploy/index.html
           
           # README mit Anweisungen
           cat > deploy/README.txt << 'EOF'

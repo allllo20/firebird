@@ -59,90 +59,31 @@ jobs:
         working-directory: build-ios
         run: $QT_IOS/bin/rcc -name resources ../resources.qrc -o qrc_resources.cpp
 
-      - name: Replace app icon with custom icon.png
+      - name: Replace iOS icon assets from root Icon.png
         working-directory: build-ios
         run: |
           SRC="${GITHUB_WORKSPACE}/icon.png"
-          
-          # 1. Suche ALLE bestehenden AppIcon.appiconsets (auch im Projekt-Root)
-          EXISTING=$(find "${GITHUB_WORKSPACE}" -name "AppIcon.appiconset" -not -path "*/build*" -not -path "*/.git/*")
-          
-          if [ -n "$EXISTING" ]; then
-            # Verwende das erste gefundene und lösche dessen Inhalt
-            APPICONSET=$(echo "$EXISTING" | head -n 1)
-            echo "Verwende bestehendes Asset Catalog: $APPICONSET"
-            rm -f "$APPICONSET"/*.png "$APPICONSET/Contents.json"
-          else
-            # Lege neues an
-            echo "Kein Asset Catalog gefunden – lege neues an"
-            APPICONSET="${GITHUB_WORKSPACE}/ios/Assets.xcassets/AppIcon.appiconset"
-            mkdir -p "$APPICONSET"
-          fi
+          IOS_DIR="${GITHUB_WORKSPACE}/resources/ios"
 
-          # 2. Alle Icon-Größen generieren
-          declare -A SIZES=(
-            ["Icon-20.png"]="20"
-            ["Icon-20@2x.png"]="40"
-            ["Icon-20@3x.png"]="60"
-            ["Icon-29.png"]="29"
-            ["Icon-29@2x.png"]="58"
-            ["Icon-29@3x.png"]="87"
-            ["Icon-40.png"]="40"
-            ["Icon-40@2x.png"]="80"
-            ["Icon-40@3x.png"]="120"
-            ["Icon-60@2x.png"]="120"
-            ["Icon-60@3x.png"]="180"
-            ["Icon-76.png"]="76"
-            ["Icon-76@2x.png"]="152"
-            ["Icon-83.5@2x.png"]="167"
-            ["Icon-1024.png"]="1024"
-          )
+          test -f "$SRC"
+          test -d "$IOS_DIR"
 
-          for FILENAME in "${!SIZES[@]}"; do
-            SIZE="${SIZES[$FILENAME]}"
-            sips -z "$SIZE" "$SIZE" "$SRC" --out "$APPICONSET/$FILENAME" > /dev/null
-            echo "  ✓ $FILENAME (${SIZE}x${SIZE})"
+          echo "Using source icon: $SRC"
+          echo "Replacing iOS icon files in: $IOS_DIR"
+
+          for TARGET in "$IOS_DIR"/*.png; do
+            BASE="$(basename "$TARGET")"
+            case "$BASE" in
+              Icon-*|iTunesArtwork@*.png)
+                W=$(sips -g pixelWidth "$TARGET" | awk '/pixelWidth:/ {print $2}')
+                H=$(sips -g pixelHeight "$TARGET" | awk '/pixelHeight:/ {print $2}')
+                sips -z "$H" "$W" "$SRC" --out "$TARGET" >/dev/null
+                echo "  ✓ $BASE (${W}x${H})"
+                ;;
+            esac
           done
 
-          # 3. Contents.json schreiben
-          cat > "$APPICONSET/Contents.json" << 'EOF'
-          {
-            "images": [
-              {"idiom":"iphone","scale":"2x","size":"20x20","filename":"Icon-20@2x.png"},
-              {"idiom":"iphone","scale":"3x","size":"20x20","filename":"Icon-20@3x.png"},
-              {"idiom":"iphone","scale":"2x","size":"29x29","filename":"Icon-29@2x.png"},
-              {"idiom":"iphone","scale":"3x","size":"29x29","filename":"Icon-29@3x.png"},
-              {"idiom":"iphone","scale":"2x","size":"40x40","filename":"Icon-40@2x.png"},
-              {"idiom":"iphone","scale":"3x","size":"40x40","filename":"Icon-40@3x.png"},
-              {"idiom":"iphone","scale":"2x","size":"60x60","filename":"Icon-60@2x.png"},
-              {"idiom":"iphone","scale":"3x","size":"60x60","filename":"Icon-60@3x.png"},
-              {"idiom":"ipad","scale":"1x","size":"20x20","filename":"Icon-20.png"},
-              {"idiom":"ipad","scale":"2x","size":"20x20","filename":"Icon-20@2x.png"},
-              {"idiom":"ipad","scale":"1x","size":"29x29","filename":"Icon-29.png"},
-              {"idiom":"ipad","scale":"2x","size":"29x29","filename":"Icon-29@2x.png"},
-              {"idiom":"ipad","scale":"1x","size":"40x40","filename":"Icon-40.png"},
-              {"idiom":"ipad","scale":"2x","size":"40x40","filename":"Icon-40@2x.png"},
-              {"idiom":"ipad","scale":"1x","size":"76x76","filename":"Icon-76.png"},
-              {"idiom":"ipad","scale":"2x","size":"76x76","filename":"Icon-76@2x.png"},
-              {"idiom":"ipad","scale":"2x","size":"83.5x83.5","filename":"Icon-83.5@2x.png"},
-              {"idiom":"ios-marketing","scale":"1x","size":"1024x1024","filename":"Icon-1024.png"}
-            ],
-            "info": {"author":"xcode","version":1}
-          }
-          EOF
-
-          # 4. pbxproj patchen - relativen Pfad zum Asset Catalog berechnen
-          PBXPROJ=$(ls -d *.xcodeproj/project.pbxproj | head -n 1)
-          XCASSETS_DIR=$(dirname "$APPICONSET")
-          REL_PATH=$(python3 -c "import os; print(os.path.relpath('$XCASSETS_DIR', '$(dirname $PBXPROJ)'))")
-          
-          echo "Asset Catalog Pfad: $REL_PATH"
-          
-          # Bestehende ASSETCATALOG-Einträge entfernen und neu setzen
-          sed -i '' '/ASSETCATALOG_COMPILER_APPICON_NAME/d' "$PBXPROJ"
-          sed -i '' "s|PRODUCT_NAME = \"firebird-emu\";|PRODUCT_NAME = \"firebird-emu\";\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tASSET_CATALOG_APP_ICON_SET_PATH = \"$REL_PATH\";|" "$PBXPROJ"
-
-          echo "Icons erfolgreich ersetzt und pbxproj aktualisiert."
+          echo "All iOS icon assets now derived from root Icon.png."
 
       - name: Build Qt Preprocess target first (generate all moc/rcc files)
         working-directory: build-ios

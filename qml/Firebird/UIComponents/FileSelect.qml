@@ -18,6 +18,7 @@ RowLayout {
         id: dialogLoader
         active: false
         sourceComponent: FileDialog {
+            modality: Qt.ApplicationModal
             folder: Emu.dir(filePath)
             // If save dialogs are not supported, force an open dialog
             selectExisting: parent.selectExisting || !Emu.saveDialogSupported()
@@ -69,6 +70,7 @@ RowLayout {
             id: createDialogLoader
             active: false
             sourceComponent: FileDialog {
+                modality: Qt.ApplicationModal
                 folder: Emu.dir(filePath)
                 selectExisting: false
                 onAccepted: {

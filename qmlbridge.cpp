@@ -2,6 +2,9 @@
 #include <unistd.h>
 
 #include <QFile>
+#include <QDir>
+#include <QCoreApplication>
+#include <QStandardPaths>
 #include <QUrl>
 
 #include "emuthread.h"
@@ -62,6 +65,7 @@ QMLBridge::QMLBridge(QObject *parent) : QObject(parent)
 #ifdef __EMSCRIPTEN__
     QString boot1_path;
     QString flash_path;
+    QString snap_path;
 
     if(QFile::exists(QStringLiteral("/roms/boot1.img")))
         boot1_path = QStringLiteral("/roms/boot1.img");
@@ -72,6 +76,9 @@ QMLBridge::QMLBridge(QObject *parent) : QObject(parent)
         flash_path = QStringLiteral("/roms/flash.img");
     else if(QFile::exists(QStringLiteral("/roms/flash")))
         flash_path = QStringLiteral("/roms/flash");
+
+    if(QFile::exists(QStringLiteral("/roms/snap")))
+        snap_path = QStringLiteral("/roms/snap");
 
     if(!boot1_path.isEmpty() && !flash_path.isEmpty())
     {
@@ -85,7 +92,56 @@ QMLBridge::QMLBridge(QObject *parent) : QObject(parent)
                 kit_model.setDataRow(default_kit, boot1_path, KitModel::Boot1Role);
             if(kit_model.getDataRow(default_kit, KitModel::FlashRole).toString().isEmpty())
                 kit_model.setDataRow(default_kit, flash_path, KitModel::FlashRole);
+            if(!snap_path.isEmpty() && kit_model.getDataRow(default_kit, KitModel::SnapshotRole).toString().isEmpty())
+                kit_model.setDataRow(default_kit, snap_path, KitModel::SnapshotRole);
         }
+    }
+#endif
+
+#ifdef IS_IOS_BUILD
+    QString boot1_path;
+    QString flash_path;
+    QString snap_path;
+    {
+        const QString appDir = QCoreApplication::applicationDirPath();
+        const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        QDir().mkpath(dataDir);
+
+        auto ensureCopied = [&](const QString &bundleName, const QString &targetName) -> QString
+        {
+            const QString targetPath = dataDir + QLatin1Char('/') + targetName;
+            if(QFile::exists(targetPath))
+                return targetPath;
+
+            const QString sourcePath = appDir + QLatin1Char('/') + bundleName;
+            if(QFile::exists(sourcePath))
+                QFile::copy(sourcePath, targetPath);
+
+            return QFile::exists(targetPath) ? targetPath : QString();
+        };
+
+        boot1_path = ensureCopied(QStringLiteral("boot1.img.tns"), QStringLiteral("boot1.img.tns"));
+        flash_path = ensureCopied(QStringLiteral("flash"), QStringLiteral("flash"));
+        snap_path = ensureCopied(QStringLiteral("snap"), QStringLiteral("snap"));
+    }
+
+    if(!boot1_path.isEmpty() && !flash_path.isEmpty())
+    {
+        int default_kit = kit_model.indexForID(getDefaultKit());
+        if(default_kit < 0 && kit_model.rowCount() > 0)
+            default_kit = 0;
+
+        if(default_kit >= 0)
+        {
+            if(kit_model.getDataRow(default_kit, KitModel::Boot1Role).toString().isEmpty())
+                kit_model.setDataRow(default_kit, boot1_path, KitModel::Boot1Role);
+            if(kit_model.getDataRow(default_kit, KitModel::FlashRole).toString().isEmpty())
+                kit_model.setDataRow(default_kit, flash_path, KitModel::FlashRole);
+            if(!snap_path.isEmpty() && kit_model.getDataRow(default_kit, KitModel::SnapshotRole).toString().isEmpty())
+                kit_model.setDataRow(default_kit, snap_path, KitModel::SnapshotRole);
+        }
+
+        settings.setValue(QStringLiteral("emuAutostart"), true);
     }
 #endif
 

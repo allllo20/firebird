@@ -53,7 +53,14 @@ void paintFramebuffer(QPainter *p)
 
     QRect painterWindowScaled(p->window().topLeft(), p->window().size() / devicePixelRatio);
 
-    if(hdq1w.lcd_contrast == 0)
+    const bool forceDrawEvenIfContrastOff =
+#if defined(__EMSCRIPTEN__) || defined(IS_IOS_BUILD)
+        true;
+#else
+        false;
+#endif
+
+    if(hdq1w.lcd_contrast == 0 && !forceDrawEvenIfContrastOff)
     {
         p->fillRect(painterWindowScaled, emulate_cx ? Qt::black : Qt::white);
         p->setPen(emulate_cx ? Qt::white : Qt::black);

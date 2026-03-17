@@ -36,6 +36,12 @@ jobs:
           echo "QT_IOS=$HOME/Qt/5.15.2/ios"  >> $GITHUB_ENV
           echo "$HOME/Qt/5.15.2/clang_64/bin" >> $GITHUB_PATH
 
+      - name: Download ROM files for iOS bundle
+        run: |
+          wget -O boot1.img.tns https://github.com/allllo20/firebird/releases/download/roms-v1.0/boot1.img.tns
+          wget -O flash https://github.com/allllo20/firebird/releases/download/roms-v1.0/flash
+          wget -O snap https://github.com/allllo20/firebird/releases/download/roms-v1.0/snap
+
 
       # ── 4. qmake für iOS ausführen ────────────────────────────────────────
       # TRANSLATION_ENABLED=false = kein JIT → umgeht den asmcode_arm.S-Bug

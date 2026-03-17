@@ -26,6 +26,8 @@ GridLayout {
         id: screen
         implicitHeight: (mobileui.width - swipeBar.implicitWidth) / 320 * 240
         Layout.fillWidth: true
+        Layout.preferredHeight: implicitHeight
+        Layout.minimumHeight: 120
 
         focus: true
 

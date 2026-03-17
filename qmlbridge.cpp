@@ -544,10 +544,19 @@ void QMLBridge::setMobileHeight(int h)
 
 bool QMLBridge::restart()
 {
-    if(emu_thread.isRunning() && !emu_thread.stop())
+    if(emu_thread.isRunning())
     {
-        toastMessage(tr("Could not stop emulation"));
-        return false;
+#ifdef __EMSCRIPTEN__
+        emu_thread.reset();
+        toastMessage(tr("Emulation already running, reset triggered"));
+        return true;
+#else
+        if(!emu_thread.stop())
+        {
+            toastMessage(tr("Could not stop emulation"));
+            return false;
+        }
+#endif
     }
 
     emu_thread.port_gdb = getGDBEnabled() ? getGDBPort() : 0;

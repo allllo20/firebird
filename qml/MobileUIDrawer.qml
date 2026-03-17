@@ -36,15 +36,18 @@ Rectangle {
             Layout.fillWidth: true
             spacing: -1 // Collapse borders
 
-            DrawerButton {
+             DrawerButton {
                  id: restartButton
 
-                 title: qsTr("Start")
+                 title: Emu.isRunning ? qsTr("Restart") : qsTr("Start")
                  icon: "qrc:/icons/resources/icons/edit-bomb.png"
 
                  onClicked: {
                      Emu.useDefaultKit();
-                     Emu.restart();
+                     if(Emu.isRunning)
+                         Emu.reset();
+                     else
+                         Emu.restart();
                      closeDrawer();
                  }
              }

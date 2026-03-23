@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QDebug>
 
 #include "emuthread.h"
 #include "qmlbridge.h"
@@ -619,7 +620,21 @@ bool QMLBridge::restart()
     emu_thread.port_rdbg = getRDBEnabled() ? getRDBPort() : 0;
 
     if(!emu_thread.boot1.isEmpty() && !emu_thread.flash.isEmpty()) {
+        if(!QFile::exists(emu_thread.boot1) || !QFile::exists(emu_thread.flash))
+        {
+            toastMessage(tr("Selected Boot1/Flash files are not accessible"));
+            qWarning().noquote() << "Emu start blocked: boot1/flash not found"
+                                 << "boot1=" << emu_thread.boot1
+                                 << "flash=" << emu_thread.flash
+                                 << "boot1Exists=" << QFile::exists(emu_thread.boot1)
+                                 << "flashExists=" << QFile::exists(emu_thread.flash);
+            return false;
+        }
+
         toastMessage(tr("Starting emulation"));
+        qInfo().noquote() << "Starting emulation with boot1=" << emu_thread.boot1
+                          << "flash=" << emu_thread.flash
+                          << "snapshot=" << getSnapshotPath();
         emu_thread.start();
         return true;
     } else {
@@ -754,7 +769,14 @@ void QMLBridge::started(bool success)
     if(success)
         toastMessage(tr("Emulation started"));
     else
+    {
         toastMessage(tr("Couldn't start emulation"));
+        qWarning().noquote() << "Emulation start failed"
+                             << "boot1=" << emu_thread.boot1
+                             << "flash=" << emu_thread.flash
+                             << "boot1Exists=" << QFile::exists(emu_thread.boot1)
+                             << "flashExists=" << QFile::exists(emu_thread.flash);
+    }
 }
 
 void QMLBridge::resumed(bool success)
@@ -762,7 +784,12 @@ void QMLBridge::resumed(bool success)
     if(success)
         toastMessage(tr("Emulation resumed"));
     else
+    {
         toastMessage(tr("Could not resume"));
+        qWarning().noquote() << "Emulation resume failed"
+                             << "snapshot=" << getSnapshotPath()
+                             << "snapshotExists=" << QFile::exists(getSnapshotPath());
+    }
 }
 
 void QMLBridge::suspended(bool success)

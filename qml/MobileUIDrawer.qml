@@ -8,7 +8,7 @@ import Firebird.UIComponents 1.0
 Rectangle {
     color: "white"
 
-    implicitWidth: layout.implicitWidth
+    implicitWidth: 300
 
     function closeDrawer() {
         listView.closeDrawer();
@@ -16,7 +16,9 @@ Rectangle {
 
     ColumnLayout {
         id: layout
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
         spacing: 5
 
         Image {

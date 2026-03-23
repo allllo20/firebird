@@ -11,33 +11,49 @@
 #include "core/debug.h"
 #include "core/emu.h"
 #include "core/lcd.h"
+#include "core/casplus.h"
 #include "core/misc.h"
 
 #include "qtkeypadbridge.h"
 
 QImage renderFramebuffer()
 {
-    static std::array<uint16_t, 320 * 240> framebuffer;
+    static std::array<uint16_t, 320 * 240> framebuffer16;
+    static std::array<uint8_t, 240 * 160> framebuffer4bpp;
 
-    lcd_cx_draw_frame(framebuffer.data());
-    QImage::Format format = QImage::Format_RGB16;
-
-    if(!emulate_cx)
+    if(emulate_cx)
     {
-        format = QImage::Format_RGB444;
-        uint16_t *px = framebuffer.data();
-        for(unsigned int i = 0; i < 320*240; ++i)
+        lcd_cx_draw_frame(framebuffer16.data());
+    }
+    else
+    {
+        if(emulate_casplus)
+            casplus_lcd_draw_frame(reinterpret_cast<uint8_t (*)[160]>(framebuffer4bpp.data()));
+        else
+            lcd_draw_frame(framebuffer4bpp.data());
+
+        auto gray4_to_rgb565 = [](uint8_t gray4) -> uint16_t {
+            uint8_t gray8 = static_cast<uint8_t>((15 - gray4) * 17);
+            return static_cast<uint16_t>(((gray8 >> 3) << 11) | ((gray8 >> 2) << 5) | (gray8 >> 3));
+        };
+
+        uint16_t *out = framebuffer16.data();
+        for(size_t row = 0; row < 240; ++row)
         {
-            uint8_t pix = *px & 0xF;
-            uint16_t n = (pix << 8) | (pix << 4) | pix;
-            *px = ~n & 0xFFF;
-            ++px;
+            const uint8_t *in = framebuffer4bpp.data() + row * 160;
+            for(size_t x = 0; x < 160; ++x)
+            {
+                uint8_t packed = *in++;
+                uint8_t gray4a = packed >> 4;
+                uint8_t gray4b = packed & 0x0F;
+
+                *out++ = gray4_to_rgb565(gray4a);
+                *out++ = gray4_to_rgb565(gray4b);
+            }
         }
     }
 
-    QImage image(reinterpret_cast<const uchar*>(framebuffer.data()), 320, 240, 320 * 2, format);
-
-    return image;
+    return QImage(reinterpret_cast<const uchar*>(framebuffer16.data()), 320, 240, 320 * 2, QImage::Format_RGB16);
 }
 
 void paintFramebuffer(QPainter *p)

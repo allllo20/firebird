@@ -77,6 +77,7 @@ GridLayout {
     }
 
     Rectangle {
+        id: portraitBackground
         Layout.fillHeight: true
         Layout.fillWidth: true
         Layout.columnSpan: 2
@@ -105,6 +106,7 @@ GridLayout {
             Layout.maximumWidth: Layout.minimumWidth
             Layout.fillHeight: true
             Layout.columnSpan: 1
+            Layout.rowSpan: 2
         }
 
         /* Screen centered on the remaining space on the left */
@@ -112,6 +114,13 @@ GridLayout {
             target: screen
             Layout.fillHeight: true
             Layout.fillWidth: true
+            Layout.rowSpan: 2
+        }
+
+        /* Only needed in portrait mode. */
+        PropertyChanges {
+            target: portraitBackground
+            visible: false
         }
     }]
 }

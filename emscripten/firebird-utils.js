@@ -1,6 +1,7 @@
 var Module = { 'preRun': function() {
 
 var firebirdCanvas = null;
+var emuStarted = false;
 
 initLCD = function()
 {
@@ -53,7 +54,12 @@ fileLoad = function(event, filename)
     var file = event.target.files[0];
 
     if(!file)
-        return FS.unlink(filename);
+    {
+        try {
+            FS.unlink(filename);
+        } catch (e) {}
+        return;
+    }
 
     var reader = new FileReader();
     reader.onloadend = function(event)
@@ -73,6 +79,10 @@ fileLoad = function(event, filename)
 
 startEmulation = function()
 {
+    if (emuStarted) {
+        return;
+    }
+
     initLCD();
 
     var fileExists = function(path) {
@@ -110,6 +120,7 @@ startEmulation = function()
         return;
     }
 
+    emuStarted = true;
     return Module.callMain();
 }
 

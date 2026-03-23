@@ -5,6 +5,8 @@
 #include "core/mmu.h"
 #include "core/debug.h"
 #include "core/emu.h"
+#include "core/lcd.h"
+#include "core/casplus.h"
 
 void gui_do_stuff(bool wait)
 {
@@ -63,19 +65,48 @@ void throttle_timer_off() {}
 void throttle_timer_on() {}
 void throttle_timer_wait(unsigned int usec) {}
 
+static inline uint32_t rgba_from_565(uint16_t rgb565)
+{
+    return (((rgb565 & 0xF800) >> 8) | ((rgb565 & 0x07E0) << 5) | ((rgb565 & 0x001F) << 19))
+            | 0xFF000000;
+}
+
 extern "C" void EMSCRIPTEN_KEEPALIVE paintLCD(uint32_t *dest)
 {
-    static uint16_t LCDbuffer16[320*240];
+    static uint16_t lcdBuffer16[320 * 240];
+    static uint8_t lcdBuffer4bpp[240 * 160];
 
-    uint16_t* in = LCDbuffer16;
-
-    lcd_cx_draw_frame(LCDbuffer16);
-
-    for(int i = 320*240; i--;)
+    if (emulate_cx)
     {
-        *dest++ = ( ((*in & 0xf800) >> 8) | ((*in & 0x07e0) << 5) | ((*in & 0x1f) << 19))
-                    | 0xFF000000;
-        in++;
+        lcd_cx_draw_frame(lcdBuffer16);
+        uint16_t *in = lcdBuffer16;
+        for (int i = 320 * 240; i--;)
+            *dest++ = rgba_from_565(*in++);
+        return;
+    }
+
+    if (emulate_casplus)
+        casplus_lcd_draw_frame((uint8_t (*)[160])lcdBuffer4bpp);
+    else
+        lcd_draw_frame(lcdBuffer4bpp);
+
+    for (int row = 0; row < 240; ++row)
+    {
+        uint8_t *in = lcdBuffer4bpp + row * 160;
+        for (int x = 0; x < 160; ++x)
+        {
+            uint8_t packed = *in++;
+
+            uint8_t hi = packed >> 4;
+            uint8_t lo = packed & 0x0F;
+
+            // Non-CX framebuffers are 4bpp indexed values; map linearly to grayscale.
+            uint8_t g1 = (uint8_t)(hi * 17);
+            uint8_t g2 = (uint8_t)(lo * 17);
+
+            *dest++ = 0xFF000000 | (g1 << 16) | (g1 << 8) | g1;
+            *dest++ = 0xFF000000 | (g2 << 16) | (g2 << 8) | g2;
+        }
     }
 }
 

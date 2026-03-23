@@ -1,8 +1,23 @@
 var Module = { 'preRun': function() {
 
+var firebirdCanvas = null;
+
 initLCD = function()
 {
-    var c = document.getElementById("canvas");
+    if (firebirdCanvas) {
+        return firebirdCanvas;
+    }
+
+    var c = Module.canvas || document.getElementById("canvas");
+    if (!c) {
+        c = document.querySelector("#screen canvas, #display canvas, .screen canvas, canvas");
+    }
+    if (!c) {
+        c = document.createElement("canvas");
+        c.id = "canvas";
+        var host = document.getElementById("screen") || document.getElementById("display") || document.body;
+        host.appendChild(c);
+    }
 
     var w = 320;
     var h = 240;
@@ -23,6 +38,8 @@ initLCD = function()
         window.requestAnimationFrame(repaint);
     };
     repaint();
+    firebirdCanvas = c;
+    return c;
 }
 
 fileLoaded = function(event, filename)
@@ -56,6 +73,8 @@ fileLoad = function(event, filename)
 
 startEmulation = function()
 {
+    initLCD();
+
     var fileExists = function(path) {
         try {
             FS.stat(path);

@@ -83,9 +83,11 @@ Rectangle {
             keymap_id: 9
 
             onClicked: {
+                console.log("[QML] on-button clicked, running=", Emu.isRunning)
                 if(!Emu.isRunning)
                 {
                     Emu.useDefaultKit();
+                    console.log("[QML] after useDefaultKit boot1=", Emu.getBoot1Path(), "flash=", Emu.getFlashPath(), "snap=", Emu.getSnapshotPath())
 
                     if(Emu.getSnapshotPath() !== "")
                         Emu.resume();

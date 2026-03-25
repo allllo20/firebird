@@ -158,6 +158,13 @@ QMLBridge::QMLBridge(QObject *parent) : QObject(parent)
 
 #ifdef __EMSCRIPTEN__
     qInfo().noquote() << "[EMU] QMLBridge initialized, kits=" << kit_model.rowCount();
+    for(int i = 0; i < kit_model.rowCount(); ++i)
+    {
+        qInfo().noquote() << "[EMU] Kit" << i
+                          << "boot1=" << kit_model.getDataRow(i, KitModel::Boot1Role).toString()
+                          << "flash=" << kit_model.getDataRow(i, KitModel::FlashRole).toString()
+                          << "snapshot=" << kit_model.getDataRow(i, KitModel::SnapshotRole).toString();
+    }
 #endif
 }
 
@@ -613,6 +620,13 @@ void QMLBridge::setMobileHeight(int h)
 
 bool QMLBridge::restart()
 {
+#ifdef __EMSCRIPTEN__
+    qInfo().noquote() << "[EMU] restart requested"
+                      << "running=" << emu_thread.isRunning()
+                      << "boot1=" << emu_thread.boot1
+                      << "flash=" << emu_thread.flash;
+#endif
+
     if(emu_thread.isRunning())
     {
 #ifdef __EMSCRIPTEN__
@@ -693,10 +707,26 @@ void QMLBridge::resume()
 
 bool QMLBridge::useDefaultKit()
 {
-    if(setCurrentKit(getDefaultKit()))
+    const auto wanted = getDefaultKit();
+    if(setCurrentKit(wanted))
+    {
+#ifdef __EMSCRIPTEN__
+        qInfo().noquote() << "[EMU] useDefaultKit ok"
+                          << "id=" << wanted
+                          << "boot1=" << emu_thread.boot1
+                          << "flash=" << emu_thread.flash
+                          << "snapshot=" << fallback_snapshot_path;
+#endif
         return true;
+    }
 
     setCurrentKit(kit_model.getKits()[0].id); // Use first kit as fallback
+#ifdef __EMSCRIPTEN__
+    qWarning().noquote() << "[EMU] useDefaultKit fallback"
+                         << "boot1=" << emu_thread.boot1
+                         << "flash=" << emu_thread.flash
+                         << "snapshot=" << fallback_snapshot_path;
+#endif
     return false;
 }
 

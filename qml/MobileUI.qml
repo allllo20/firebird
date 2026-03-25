@@ -88,6 +88,7 @@ ApplicationWindow {
             }
         }
         function onToastMessage(msg) {
+            console.log("[QML] toast:", msg)
             toast.showMessage(msg);
         }
     }

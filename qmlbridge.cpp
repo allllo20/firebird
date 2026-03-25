@@ -625,6 +625,8 @@ bool QMLBridge::restart()
                       << "running=" << emu_thread.isRunning()
                       << "boot1=" << emu_thread.boot1
                       << "flash=" << emu_thread.flash;
+    // Ensure the emulation thread is not stuck in paused mode on wasm.
+    emu_thread.setPaused(false);
 #endif
 
     if(emu_thread.isRunning())
@@ -697,6 +699,10 @@ void QMLBridge::resume()
 
     emu_thread.port_gdb = getGDBEnabled() ? getGDBPort() : 0;
     emu_thread.port_rdbg = getRDBEnabled() ? getRDBPort() : 0;
+
+#ifdef __EMSCRIPTEN__
+    emu_thread.setPaused(false);
+#endif
 
     auto snapshot_path = getSnapshotPath();
     if(!snapshot_path.isEmpty())

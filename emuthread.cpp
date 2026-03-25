@@ -141,7 +141,14 @@ void EmuThread::doStuff(bool wait)
         }
 
         if(is_paused && wait)
+        {
+#ifdef __EMSCRIPTEN__
+            static unsigned int pause_wait_log;
+            if((pause_wait_log++ % 50) == 0)
+                qInfo().noquote() << "[EMU] doStuff waiting because paused";
+#endif
             msleep(100);
+        }
 
     } while(is_paused && wait);
 }
@@ -230,6 +237,9 @@ void EmuThread::debuggerInput(QString str)
 void EmuThread::setPaused(bool paused)
 {
     this->is_paused = paused;
+#ifdef __EMSCRIPTEN__
+    qInfo().noquote() << "[EMU] setPaused" << paused;
+#endif
     emit this->paused(paused);
 }
 

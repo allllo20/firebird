@@ -17,6 +17,11 @@ void lcd_draw_frame(uint8_t *buffer) {
     uint32_t bpp = 1 << (lcd.control >> 1 & 7);
     uint32_t *in = (uint32_t *)(intptr_t)phys_mem_ptr(lcd.framebuffer, (320 * 240) / 8 * bpp);
     if (!in || bpp > 32) {
+#ifdef __EMSCRIPTEN__
+        static unsigned int warn_count;
+        if ((warn_count++ % 240) == 0)
+            gui_debug_printf("lcd_draw_frame empty: fb=%08x ctrl=%08x bpp=%u\n", lcd.framebuffer, lcd.control, bpp);
+#endif
         memset(buffer, 0, 160 * 240);
         return;
     }

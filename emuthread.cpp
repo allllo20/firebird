@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QEventLoop>
 #include <QTimer>
+#include <QDebug>
 
 #ifdef Q_OS_WINDOWS
     #include <time.h>
@@ -152,8 +153,22 @@ void EmuThread::run()
     path_boot1 = QDir::toNativeSeparators(boot1).toStdString();
     path_flash = QDir::toNativeSeparators(flash).toStdString();
 
+#ifdef __EMSCRIPTEN__
+    qInfo().noquote() << "[EMU] thread run begin"
+                      << "boot1=" << boot1
+                      << "flash=" << flash
+                      << "resume=" << do_resume
+                      << "snapshot=" << QString::fromStdString(snapshot_path);
+#endif
+
     bool do_reset = !do_resume;
     bool success = emu_start(port_gdb, port_rdbg, do_resume ? snapshot_path.c_str() : nullptr);
+
+#ifdef __EMSCRIPTEN__
+    qInfo().noquote() << "[EMU] emu_start returned" << success
+                      << "product=" << product
+                      << "features=" << features;
+#endif
 
     if(do_resume)
         emit resumed(success);
@@ -164,6 +179,10 @@ void EmuThread::run()
 
     if(success)
         emu_loop(do_reset);
+
+#ifdef __EMSCRIPTEN__
+    qInfo().noquote() << "[EMU] thread run end";
+#endif
 
     emit stopped();
 }

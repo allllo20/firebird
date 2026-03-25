@@ -809,7 +809,10 @@ void QMLBridge::speedChanged(double speed)
 void QMLBridge::started(bool success)
 {
     if(success)
+    {
         toastMessage(tr("Emulation started"));
+        qInfo().noquote() << "[EMU] started signal success";
+    }
     else
     {
         toastMessage(tr("Couldn't start emulation"));

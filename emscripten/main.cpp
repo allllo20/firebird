@@ -7,6 +7,8 @@
 #include "core/emu.h"
 #include "core/lcd.h"
 #include "core/casplus.h"
+#include "core/schedule.h"
+#include "core/mem.h"
 
 void gui_do_stuff(bool wait)
 {

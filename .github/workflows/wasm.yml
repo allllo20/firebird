@@ -1,4 +1,4 @@
-name: Build WebAssembly (for self-hosting)
+name: Build WebAssembly (Emscripten)
 
 on:
   push:
@@ -15,264 +15,56 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ───────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # ── 2. Emscripten SDK (Qt 5.15.2 benötigt exakt 1.39.8) ──────────────
-      - name: Install Emscripten 1.39.8
+      - name: Install Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: 1.39.8
+          version: 3.1.74
           actions-cache-folder: emsdk-cache
 
-      - name: Verify emcc
-        run: emcc --version
-
-      # ── 3. Qt 5.15.2 für WebAssembly ──────────────────────────────────────
-      - name: Install aqtinstall
-        run: pipx install aqtinstall
-
-      - name: Install Qt 5 – Linux host tools (qmake, moc, rcc)
-        run: aqt install-qt linux desktop 5.15.2 gcc_64 --outputdir $HOME/Qt
-
-      - name: Install Qt 5 – WebAssembly target
-        run: aqt install-qt linux desktop 5.15.2 wasm_32 --outputdir $HOME/Qt
-
-      - name: Export Qt paths
+      - name: Verify toolchain
         run: |
-          echo "QT_HOST=$HOME/Qt/5.15.2/gcc_64"      >> $GITHUB_ENV
-          echo "QT_WASM=$HOME/Qt/5.15.2/wasm_32"     >> $GITHUB_ENV
-          echo "$HOME/Qt/5.15.2/gcc_64/bin"           >> $GITHUB_PATH
+          emcc --version
+          make --version
 
-      # ── 3.5. Patch source code for WASM compatibility ──────────────────────
-      - name: Patch code – disable QThread::setTerminationEnabled for WASM
-        run: |
-          # Diese Funktion existiert nicht in Qt WASM
-          find . -name "*.cpp" -o -name "*.h" | xargs grep -l "setTerminationEnabled" | while read file; do
-            sed -i 's/\(.*setTerminationEnabled.*\)/#ifndef __EMSCRIPTEN__\n\1\n#endif/' "$file"
-          done
-          echo "Patched files for WASM compatibility"
-
-          
       - name: Download ROM files
         run: |
           mkdir -p roms
           cd roms
-          wget https://github.com/allllo20/firebird/releases/download/roms-v1.0/boot1.img.tns
-          wget https://github.com/allllo20/firebird/releases/download/roms-v1.0/flash
-          wget https://github.com/allllo20/firebird/releases/download/roms-v1.0/snap
-          cd ..
+          wget -q https://github.com/allllo20/firebird/releases/download/roms-v1.0/boot1.img.tns
+          wget -q https://github.com/allllo20/firebird/releases/download/roms-v1.0/flash
+          wget -q https://github.com/allllo20/firebird/releases/download/roms-v1.0/snap
 
-
-      # ── 4. Build ──────────────────────────────────────────────────────────
-      - name: Run qmake (WebAssembly)
+      - name: Build (non-Qt Emscripten target)
+        working-directory: emscripten
         run: |
-          mkdir build-wasm && cd build-wasm
-          $QT_WASM/bin/qmake .. \
-            -spec wasm-emscripten \
-            "CONFIG+=release" \
-            "DEFINES+=MOBILE_UI" \
-            "TRANSLATION_ENABLED=false" \
-            "QMAKE_CFLAGS+=-s USE_ZLIB=1" \
-            "QMAKE_CXXFLAGS+=-s USE_ZLIB=1" \
-            "QMAKE_LFLAGS+=-s USE_ZLIB=1" \
-            "QMAKE_LFLAGS+=--preload-file ../roms@/roms"
+          make clean
+          make -j"$(nproc)" LFLAGS="-s INITIAL_MEMORY=268435456 -s ALLOW_MEMORY_GROWTH=1 --preload-file ../roms@/roms"
 
-      - name: Patch Makefile – fix missing -s prefix on Emscripten linker flags
-        working-directory: build-wasm
-        run: |
-          sed -i \
-            -e 's/\bWASM=1\b/-s WASM=1/g' \
-            -e 's/\bFULL_ES2=1\b/-s FULL_ES2=1/g' \
-            -e 's/\bFULL_ES3=1\b/-s FULL_ES3=1/g' \
-            -e 's/\bUSE_WEBGL2=1\b/-s USE_WEBGL2=1/g' \
-            -e 's/\bEXIT_RUNTIME=1\b/-s EXIT_RUNTIME=1/g' \
-            -e 's/\bERROR_ON_UNDEFINED_SYMBOLS=1\b/-s ERROR_ON_UNDEFINED_SYMBOLS=1/g' \
-            -e 's/\bEXTRA_EXPORTED_RUNTIME_METHODS=\[/-s EXTRA_EXPORTED_RUNTIME_METHODS=[/g' \
-            -e 's/\bFETCH=1\b/-s FETCH=1/g' \
-            Makefile
-          echo "Makefile gepatcht"
-
-      - name: Build
-        working-directory: build-wasm
-        run: make -j$(nproc)
-
-      # ── 5. Package für Self-Hosting ───────────────────────────────────────
       - name: Create deployment package
         run: |
           mkdir -p deploy
-          
-          # Hauptdateien
-          cp build-wasm/firebird-emu.html   deploy/index.html   || \
-          cp build-wasm/firebird.html       deploy/index.html
-          cp build-wasm/*.js                deploy/
-          cp build-wasm/*.wasm              deploy/
-          
-          # Optionale Dateien
-          cp build-wasm/*.data              deploy/ 2>/dev/null || true
-          cp build-wasm/*.worker.js         deploy/ 2>/dev/null || true
-
-          # Keep both module name variants available (firebird and firebird-emu)
-          # so qtloader/index mismatches don't break runtime loading.
-          if [ -f deploy/firebird-emu.js ] && [ ! -f deploy/firebird.js ]; then cp deploy/firebird-emu.js deploy/firebird.js; fi
-          if [ -f deploy/firebird-emu.wasm ] && [ ! -f deploy/firebird.wasm ]; then cp deploy/firebird-emu.wasm deploy/firebird.wasm; fi
-          if [ -f deploy/firebird-emu.data ] && [ ! -f deploy/firebird.data ]; then cp deploy/firebird-emu.data deploy/firebird.data; fi
-          if [ -f deploy/firebird.js ] && [ ! -f deploy/firebird-emu.js ]; then cp deploy/firebird.js deploy/firebird-emu.js; fi
-          if [ -f deploy/firebird.wasm ] && [ ! -f deploy/firebird-emu.wasm ]; then cp deploy/firebird.wasm deploy/firebird-emu.wasm; fi
-          if [ -f deploy/firebird.data ] && [ ! -f deploy/firebird-emu.data ]; then cp deploy/firebird.data deploy/firebird-emu.data; fi
-
-          # Disable Jekyll processing on GitHub Pages to avoid edge-case asset handling.
+          cp emscripten/firebird.html deploy/index.html
+          cp emscripten/firebird.js deploy/
+          cp emscripten/firebird.wasm deploy/
+          cp emscripten/firebird.data deploy/ 2>/dev/null || true
+          cp icon.png deploy/ 2>/dev/null || true
+          cp icon.png deploy/favicon.ico 2>/dev/null || true
           touch deploy/.nojekyll
 
-          # Service Worker für Server ohne COOP/COEP Header
-          cat > deploy/coi-serviceworker.js << 'EOF'
-          /* coi-serviceworker v0.1.7 – for servers without COOP/COEP headers */
-          self.addEventListener("install",()=>self.skipWaiting());
-          self.addEventListener("activate",e=>e.waitUntil(self.clients.claim()));
-          self.addEventListener("fetch",e=>{
-            const req = e.request;
-            if(!req || !req.url) return;
-            if(req.cache==="only-if-cached"&&req.mode!=="same-origin")return;
-            if(!/^https?:/i.test(req.url)) return;
-            e.respondWith(
-              (async () => {
-                try {
-                  const r = await fetch(req);
-                  if(!r || r.status===0) return r;
-                  const h = new Headers(r.headers);
-                  h.set("Cross-Origin-Opener-Policy","same-origin");
-                  h.set("Cross-Origin-Embedder-Policy","require-corp");
-                  return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h});
-                } catch (_) {
-                  try {
-                    return await fetch(req);
-                  } catch (_) {
-                    return Response.error();
-                  }
-                }
-              })()
-            );
-          });
-          EOF
-
-          python3 - << 'PY'
-          from pathlib import Path
-          p = Path("deploy/index.html")
-          s = p.read_text(encoding="utf-8")
-          inject = (
-              '<head><script>'
-              '(function(){'
-              'function n(v,d){v=Number(v);return Number.isFinite(v)?v:d;}'
-              'function mk(w,h,d){return [{inlineSize:Math.max(0,Math.round(w*d)),blockSize:Math.max(0,Math.round(h*d))}];}'
-              'window.ResizeObserver=function(cb){'
-              'var self=this;'
-              'self._cb=cb;'
-              'self._targets=[];'
-              'self._tick=0;'
-              'self._emit=function(){'
-              'var out=[];'
-              'for(var i=0;i<self._targets.length;i++){'
-              'var t=self._targets[i];'
-              'if(!t)continue;'
-              'var r=t.getBoundingClientRect?t.getBoundingClientRect():{width:t.clientWidth||0,height:t.clientHeight||0,left:0,top:0};'
-              'var w=n(r.width,n(t.clientWidth,0));'
-              'var h=n(r.height,n(t.clientHeight,0));'
-              'var d=n(window.devicePixelRatio,1);'
-              'out.push({'
-              'target:t,'
-              'contentRect:{x:n(r.x,n(r.left,0)),y:n(r.y,n(r.top,0)),top:n(r.top,0),left:n(r.left,0),right:n(r.right,n(r.left,0)+w),bottom:n(r.bottom,n(r.top,0)+h),width:w,height:h},'
-              'contentBoxSize:mk(w,h,1),'
-              'borderBoxSize:mk(w,h,1),'
-              'devicePixelContentBoxSize:mk(w,h,d)'
-              '});'
-              '}'
-              'self._cb(out,self);'
-              '};'
-              'self._handler=function(){'
-              'if(self._tick)return;'
-              'self._tick=1;'
-              'requestAnimationFrame(function(){self._tick=0;self._emit();});'
-              '};'
-              'window.addEventListener("resize",self._handler,{passive:true});'
-              'self.observe=function(t){if(self._targets.indexOf(t)===-1)self._targets.push(t);self._handler();};'
-              'self.unobserve=function(t){var i=self._targets.indexOf(t);if(i>=0)self._targets.splice(i,1);};'
-              'self.disconnect=function(){window.removeEventListener("resize",self._handler);self._targets=[];};'
-              '};'
-              '})();'
-              '(function(){'
-              'var p=navigator.permissions;'
-              'if(!p||!p.query)return;'
-              'var q=p.query.bind(p);'
-              'p.query=function(desc){'
-              'if(desc&&(desc.name==="clipboard-read"||desc.name==="clipboard-write"))'
-              'return Promise.resolve({state:"prompt",onchange:null});'
-              'try{return q(desc);}catch(e){return Promise.resolve({state:"prompt",onchange:null});}'
-              '};'
-              '})();'
-              'if(!crossOriginIsolated && !navigator.serviceWorker.controller){'
-              'navigator.serviceWorker.register("coi-serviceworker.js").then(r=>r.update()).then(()=>window.location.reload());'
-              'window.stop();'
-              '}'
-              '</script>'
-          )
-          s = s.replace("<head>", inject, 1)
-          p.write_text(s, encoding="utf-8")
-          PY
-          
-          # README mit Anweisungen
-          cat > deploy/README.txt << 'EOF'
-          FIREBIRD WEBASSEMBLY BUILD
-          ==========================
-
-          INSTALLATION:
-          1. Lade alle Dateien auf deinen Webserver hoch
-          2. Stelle sicher, dass dein Server folgende Header setzt:
-             Cross-Origin-Opener-Policy: same-origin
-             Cross-Origin-Embedder-Policy: require-corp
-
-          WEBSERVER-KONFIGURATIONEN:
-
-          Apache (.htaccess):
-          -------------------
-          <IfModule mod_headers.c>
-              Header set Cross-Origin-Opener-Policy "same-origin"
-              Header set Cross-Origin-Embedder-Policy "require-corp"
-          </IfModule>
-
-          Nginx:
-          ------
-          add_header Cross-Origin-Opener-Policy "same-origin";
-          add_header Cross-Origin-Embedder-Policy "require-corp";
-
-          Caddy:
-          ------
-          header {
-              Cross-Origin-Opener-Policy "same-origin"
-              Cross-Origin-Embedder-Policy "require-corp"
-          }
-
-          OHNE HEADER-KONFIGURATION:
-          Der inkludierte coi-serviceworker.js setzt die Header 
-          clientseitig (funktioniert bei den meisten Browsern).
-
-          TESTEN:
-          Öffne https://dein-server.de/pfad/index.html
-          EOF
-
-          echo "Deployment-Paket erstellt:"
           ls -lh deploy/
 
-      # ── 6. Upload als Artifact ────────────────────────────────────────────
       - name: Upload deployment package
         uses: actions/upload-artifact@v4
         with:
-          name: firebird-wasm-selfhost
+          name: firebird-wasm-emscripten
           path: deploy/
           retention-days: 90
-          
+
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

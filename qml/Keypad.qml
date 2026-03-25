@@ -94,7 +94,7 @@ Rectangle {
                     Emu.useDefaultKit();
                     console.log("[QML] after useDefaultKit boot1=", Emu.getBoot1Path(), "flash=", Emu.getFlashPath(), "snap=", Emu.getSnapshotPath())
 
-                    if(Emu.getSnapshotPath() !== "")
+                    if(Qt.platform.os !== "wasm" && Emu.getSnapshotPath() !== "")
                         Emu.resume();
                     else
                         Emu.restart();

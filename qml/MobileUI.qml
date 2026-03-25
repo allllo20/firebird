@@ -98,6 +98,11 @@ ApplicationWindow {
     Connections {
         target: Qt.application
         function onStateChanged() {
+            // In wasm builds, Qt application state transitions are noisy and can
+            // keep the emulation paused before the LCD is ever initialized.
+            if (Qt.platform.os === "wasm")
+                return;
+
             switch (Qt.application.state)
             {
                 case Qt.ApplicationSuspended: // Might be reaped on mobile

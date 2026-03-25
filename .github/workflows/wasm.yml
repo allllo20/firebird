@@ -1,4 +1,4 @@
-name: Build WebAssembly (Emscripten)
+name: Build for WebAssembly + Deploy to GitHub Pages
 
 on:
   push:
@@ -10,65 +10,104 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
   build-wasm:
     runs-on: ubuntu-latest
 
     steps:
+      # ── 1. Checkout ───────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Emscripten
+      # ── 2. Emscripten SDK (Qt 5.15.2 benötigt exakt 2.0.14) ──────────────
+      - name: Install Emscripten 2.0.14
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: 3.1.74
+          version: 2.0.14
           actions-cache-folder: emsdk-cache
 
-      - name: Verify toolchain
+      - name: Verify emcc
+        run: emcc --version
+
+      # ── 3. Qt 5.15.2 für WebAssembly ──────────────────────────────────────
+      - name: Install aqtinstall
+        run: pipx install aqtinstall
+
+      - name: Install Qt 5 – Linux host tools (qmake, moc, rcc)
+        run: aqt install-qt linux desktop 5.15.2 gcc_64 --outputdir $HOME/Qt
+
+      - name: Install Qt 5 – WebAssembly target
+        run: aqt install-qt linux desktop 5.15.2 wasm_32 --outputdir $HOME/Qt
+
+      - name: Export Qt paths
         run: |
-          emcc --version
-          make --version
+          echo "QT_HOST=$HOME/Qt/5.15.2/gcc_64"      >> $GITHUB_ENV
+          echo "QT_WASM=$HOME/Qt/5.15.2/wasm_32"     >> $GITHUB_ENV
+          echo "$HOME/Qt/5.15.2/gcc_64/bin"           >> $GITHUB_PATH
 
-      - name: Download ROM files
+      # ── 4. Build ──────────────────────────────────────────────────────────
+      - name: Run qmake (WebAssembly)
         run: |
-          mkdir -p roms
-          cd roms
-          wget -q https://github.com/allllo20/firebird/releases/download/roms-v1.0/boot1.img.tns
-          wget -q https://github.com/allllo20/firebird/releases/download/roms-v1.0/flash
-          wget -q https://github.com/allllo20/firebird/releases/download/roms-v1.0/snap
+          mkdir build-wasm && cd build-wasm
+          $QT_WASM/bin/qmake .. \
+            -spec wasm-emscripten \
+            "CONFIG+=release" \
+            "TRANSLATION_ENABLED=false"
 
-      - name: Build (non-Qt Emscripten target)
-        working-directory: emscripten
+      - name: Build
+        working-directory: build-wasm
+        run: make -j$(nproc)
+
+      # ── 5. Ausgabe-Verzeichnis für Pages zusammenstellen ──────────────────
+      - name: Assemble Pages directory
         run: |
-          make clean
-          make -j"$(nproc)" LFLAGS="-s INITIAL_MEMORY=268435456 -s ALLOW_MEMORY_GROWTH=1 --preload-file ../roms@/roms"
+          mkdir -p pages
 
-      - name: Create deployment package
-        run: |
-          mkdir -p deploy
-          cp emscripten/firebird.html deploy/index.html
-          cp emscripten/firebird.js deploy/
-          cp emscripten/firebird.wasm deploy/
-          cp emscripten/firebird.data deploy/ 2>/dev/null || true
-          cp icon.png deploy/ 2>/dev/null || true
-          cp icon.png deploy/favicon.ico 2>/dev/null || true
-          touch deploy/.nojekyll
+          # Die von Qt WASM generierten Dateien
+          cp build-wasm/firebird-emu.html   pages/index.html   || \
+          cp build-wasm/firebird.html       pages/index.html
+          cp build-wasm/*.js                pages/
+          cp build-wasm/*.wasm              pages/
+          # Optionale Dateien (existieren nur bei bestimmten Qt-Konfigurationen)
+          cp build-wasm/*.data              pages/ 2>/dev/null || true
+          cp build-wasm/*.worker.js         pages/ 2>/dev/null || true
 
-          ls -lh deploy/
+          # COOP/COEP Headers via Service Worker (nötig für SharedArrayBuffer)
+          cat > pages/coi-serviceworker.js << 'EOF'
+          /* coi-serviceworker v0.1.7 – makeshift crossOriginIsolated for GitHub Pages */
+          self.addEventListener("install",()=>self.skipWaiting());
+          self.addEventListener("activate",e=>e.waitUntil(self.clients.claim()));
+          self.addEventListener("fetch",e=>{
+            if(e.request.cache==="only-if-cached"&&e.request.mode!=="same-origin")return;
+            e.respondWith(
+              fetch(e.request).then(r=>{
+                if(r.status===0)return r;
+                const h=new Headers(r.headers);
+                h.set("Cross-Origin-Opener-Policy","same-origin");
+                h.set("Cross-Origin-Embedder-Policy","require-corp");
+                return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h});
+              })
+            );
+          });
+          EOF
 
-      - name: Upload deployment package
-        uses: actions/upload-artifact@v4
-        with:
-          name: firebird-wasm-emscripten
-          path: deploy/
-          retention-days: 90
+          # Inject Service Worker registration into index.html
+          sed -i 's|<head>|<head>\n<script>if(!crossOriginIsolated){const r=new Promise(res=>navigator.serviceWorker.register("coi-serviceworker.js").then(res,res));if(!navigator.serviceWorker.controller)r.then(()=>location.reload());}</script>|' pages/index.html
 
-      - name: Upload GitHub Pages artifact
+          echo "Pages content:"
+          ls -lh pages/
+
+      # ── 6. GitHub Pages Upload ────────────────────────────────────────────
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: deploy/
+          path: pages/
 
   deploy:
     needs: build-wasm

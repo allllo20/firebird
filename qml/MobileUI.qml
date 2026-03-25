@@ -33,7 +33,9 @@ ApplicationWindow {
                 && Emu.getFlashPath() !== ""
                 && Emu.getBoot1Path() !== "")
             {
-                if(Emu.getSnapshotPath() !== "")
+                if(Qt.platform.os === "wasm")
+                    Emu.restart();
+                else if(Emu.getSnapshotPath() !== "")
                     Emu.resume();
                 else
                     Emu.restart();

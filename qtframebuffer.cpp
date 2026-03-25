@@ -7,6 +7,7 @@
 #include <QPainter>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QDebug>
 
 #include "core/debug.h"
 #include "core/emu.h"
@@ -20,6 +21,7 @@ QImage renderFramebuffer()
 {
     static std::array<uint16_t, 320 * 240> framebuffer16;
     static std::array<uint8_t, 240 * 160> framebuffer4bpp;
+    static uint16_t sample0 = 0, sample1 = 0;
 
     if(emulate_cx)
     {
@@ -52,6 +54,22 @@ QImage renderFramebuffer()
             }
         }
     }
+
+    sample0 = framebuffer16[0];
+    sample1 = framebuffer16[1];
+
+#ifdef __EMSCRIPTEN__
+    static int frameCounter = 0;
+    if(++frameCounter % 120 == 0)
+    {
+        qInfo().noquote() << "[EMU] render frame"
+                          << "product=" << product
+                          << "cx=" << emulate_cx
+                          << "casplus=" << emulate_casplus
+                          << "px0=" << sample0
+                          << "px1=" << sample1;
+    }
+#endif
 
     return QImage(reinterpret_cast<const uchar*>(framebuffer16.data()), 320, 240, 320 * 2, QImage::Format_RGB16);
 }

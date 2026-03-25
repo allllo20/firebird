@@ -84,7 +84,12 @@ Rectangle {
 
             onClicked: {
                 console.log("[QML] on-button clicked, running=", Emu.isRunning)
-                if(!Emu.isRunning)
+                if(Emu.isRunning)
+                {
+                    console.log("[QML] on-button triggers reset")
+                    Emu.reset();
+                }
+                else
                 {
                     Emu.useDefaultKit();
                     console.log("[QML] after useDefaultKit boot1=", Emu.getBoot1Path(), "flash=", Emu.getFlashPath(), "snap=", Emu.getSnapshotPath())

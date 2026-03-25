@@ -140,6 +140,13 @@ message("FB_ARCH: $$FB_ARCH")
 message("TRANSLATION_ENABLED: $$TRANSLATION_ENABLED")
 message("SUPPORT_LINUX: $$SUPPORT_LINUX")
 
+equals(FB_ARCH, "wasm") {
+    # Ensure zlib headers/libs are provided by the emscripten ports sysroot.
+    QMAKE_CFLAGS += -s USE_ZLIB=1
+    QMAKE_CXXFLAGS += -s USE_ZLIB=1
+    QMAKE_LFLAGS += -s USE_ZLIB=1
+}
+
 equals(SUPPORT_LINUX, true) {
     DEFINES += SUPPORT_LINUX
 }

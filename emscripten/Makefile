@@ -1,9 +1,9 @@
 CC := emcc
 CXX := em++
 FLAGS := -O3 -Wall -I..
-CFLAGS := -std=c11 $(FLAGS)
-CXXFLAGS := -std=c++11 $(FLAGS)
 EMFLAGS := -s USE_ZLIB=1 -s DISABLE_EXCEPTION_CATCHING=1 -s INVOKE_RUN=0 -s NO_EXIT_RUNTIME=1 -s ASSERTIONS=0
+CFLAGS := -std=c11 $(FLAGS) $(EMFLAGS)
+CXXFLAGS := -std=c++11 $(FLAGS) $(EMFLAGS)
 EXPORTS := -s EXPORTED_RUNTIME_METHODS='["callMain","cwrap"]' -s EXPORTED_FUNCTIONS='["_main","_paintLCD","_malloc"]'
 PREJS := --pre-js firebird-utils.js
 LFLAGS := -s INITIAL_MEMORY=268435456 -s ALLOW_MEMORY_GROWTH=1

@@ -135,6 +135,8 @@ public slots:
     void started(bool success); // Not called on resume
     void resumed(bool success);
     void suspended(bool success);
+    void logDebug(QString str);
+    void logStatus(QString str);
 
 signals:
     void gdbPortChanged();

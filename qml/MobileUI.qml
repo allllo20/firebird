@@ -184,6 +184,8 @@ ApplicationWindow {
             // The pages are expensive, keep them
             ListView.delayRemove: true
 
+            readonly property int drawerWidth: Math.max(280, Math.min(360, Math.round(app.width * 0.5)))
+
             Component.onCompleted: {
                 listView.pageX[index] = x;
             }
@@ -192,7 +194,7 @@ ApplicationWindow {
                 listView.pageX[index] = x;
             }
 
-            width: modelData === "MobileUIDrawer.qml" ? loader.item.implicitWidth : app.width
+            width: modelData === "MobileUIDrawer.qml" ? drawerWidth : app.width
             height: app.height
 
             Rectangle {

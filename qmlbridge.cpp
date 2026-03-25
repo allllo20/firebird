@@ -155,6 +155,10 @@ QMLBridge::QMLBridge(QObject *parent) : QObject(parent)
     connect(&kit_model, SIGNAL(anythingChanged()), this, SLOT(saveKits()), Qt::QueuedConnection);
 
     setActive(true);
+
+#ifdef __EMSCRIPTEN__
+    qInfo().noquote() << "[EMU] QMLBridge initialized, kits=" << kit_model.rowCount();
+#endif
 }
 
 QMLBridge::~QMLBridge()
@@ -521,6 +525,10 @@ void QMLBridge::setActive(bool b)
         connect(&emu_thread, SIGNAL(started(bool)), this, SLOT(started(bool)), Qt::QueuedConnection);
         connect(&emu_thread, SIGNAL(resumed(bool)), this, SLOT(resumed(bool)), Qt::QueuedConnection);
         connect(&emu_thread, SIGNAL(suspended(bool)), this, SLOT(suspended(bool)), Qt::QueuedConnection);
+#ifdef __EMSCRIPTEN__
+        connect(&emu_thread, SIGNAL(debugStr(QString)), this, SLOT(logDebug(QString)), Qt::QueuedConnection);
+        connect(&emu_thread, SIGNAL(statusMsg(QString)), this, SLOT(logStatus(QString)), Qt::QueuedConnection);
+#endif
 
         // We might have missed some events.
         turboModeChanged();
@@ -538,6 +546,10 @@ void QMLBridge::setActive(bool b)
         disconnect(&emu_thread, SIGNAL(started(bool)), this, SLOT(started(bool)));
         disconnect(&emu_thread, SIGNAL(resumed(bool)), this, SLOT(resumed(bool)));
         disconnect(&emu_thread, SIGNAL(suspended(bool)), this, SLOT(suspended(bool)));
+#ifdef __EMSCRIPTEN__
+        disconnect(&emu_thread, SIGNAL(debugStr(QString)), this, SLOT(logDebug(QString)));
+        disconnect(&emu_thread, SIGNAL(statusMsg(QString)), this, SLOT(logStatus(QString)));
+#endif
     }
 
     is_active = b;
@@ -800,6 +812,24 @@ void QMLBridge::suspended(bool success)
         toastMessage(tr("Couldn't save snapshot"));
 
     emit emuSuspended(success);
+}
+
+void QMLBridge::logDebug(QString str)
+{
+    const QString trimmed = str.trimmed();
+    if(trimmed.isEmpty())
+        return;
+
+    qWarning().noquote() << "[EMU]" << trimmed;
+}
+
+void QMLBridge::logStatus(QString str)
+{
+    const QString trimmed = str.trimmed();
+    if(trimmed.isEmpty())
+        return;
+
+    qInfo().noquote() << "[EMU-STATUS]" << trimmed;
 }
 
 double QMLBridge::getSpeed()
